@@ -33,6 +33,7 @@ export async function GET(req: Request) {
           (GROUP_CONCAT(DISTINCT STR(?sameAs0); separator="|") AS ?sameAs)
           (GROUP_CONCAT(DISTINCT STR(?url0); separator="|") AS ?urls)
           (GROUP_CONCAT(DISTINCT STR(?partOf); separator="|") AS ?isPartOf)
+          (GROUP_CONCAT(DISTINCT STR(?partOfName); separator="|") AS ?isPartOfNames)
           (SAMPLE(?vol) AS ?volume)
           (SAMPLE(?iss) AS ?issue)
           (SAMPLE(?pStart) AS ?pageStart)
@@ -58,7 +59,11 @@ export async function GET(req: Request) {
           
           OPTIONAL { ?paper schema:sameAs ?sameAs0 . }
           OPTIONAL { ?paper schema:url ?url0 . }
-          OPTIONAL { ?paper schema:isPartOf ?partOf . }
+
+          OPTIONAL { 
+            ?paper schema:isPartOf ?partOf . 
+            OPTIONAL { ?partOf schema:name ?partOfName . }  
+          }
           
           OPTIONAL { ?paper schema:volumeNumber ?vol . }
           OPTIONAL { ?paper schema:issueNumber ?iss . }
@@ -112,6 +117,7 @@ export async function GET(req: Request) {
             sameAs: splitPipe(row.sameAs?.value ?? ""),
             urls: splitPipe(row.urls?.value ?? ""),
             isPartOf: splitPipe(row.isPartOf?.value ?? ""),
+            isPartOfNames: splitPipe(row.isPartOfNames?.value ?? ""),
             volume: row.volume?.value ?? null,
             issue: row.issue?.value ?? null,
             pageStart: row.pageStart?.value ?? null,

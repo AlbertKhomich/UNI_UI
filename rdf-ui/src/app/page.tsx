@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link";
 import type { PaperDetails, SearchItem } from "@/lib/types";
 
 function useDebounce<T>(value: T, delayMs = 350) {
@@ -20,7 +19,7 @@ export default function HomePage(){
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
   const [details, setDetails] = useState<Record<string, PaperDetails>>({});
   const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
   const [detailsErr, setDetailsErr] = useState<Record<string, string>>({});
@@ -31,11 +30,12 @@ export default function HomePage(){
     let cancelled = false;
 
     async function run() {
-      setOpenId(null);
+      setOpenIds(new Set());
+      setDetails({});
+      setDetailsErr({});
+      setDetailsLoading({});
 
       if (!canSearch) {
-        setDetailsErr({});
-        setDetailsLoading({});
         setItems([]);
         setErr(null);
         return;
@@ -115,11 +115,22 @@ export default function HomePage(){
 
       <ul className="mt-4 space-y-2">
         {items.map((it) => {
-          const isOpen = openId === it.id;
+          const isOpen = openIds.has(it.id);
           const d = details[it.id];
           const keywords = d?.keywords ?? [];
           const loadingD = !!detailsLoading[it.id];
           const errD = detailsErr[it.id];
+          const whereParts: string[] = [];
+          if (d?.volume) whereParts.push(`Vol. ${d.volume}`);
+          if (d?.issue) whereParts.push(`Issue ${d.issue}`);
+
+          const pages = 
+            d?.pageStart && d?.pageEnd ? `pp. ${d.pageStart}-${d.pageEnd}`
+            : d?.pageStart ? `p. ${d.pageStart}`
+            : d?.pageEnd ? `p. ${d.pageEnd}`
+            : null;
+
+          if (pages) whereParts.push(pages);
 
           return (
           <li 
@@ -132,9 +143,16 @@ export default function HomePage(){
               type="button"
               className="text-left w-full"
               onClick={() => {
-                const next = isOpen ? null : it.id;
-                setOpenId(next);
-                if (!isOpen) ensureDetails(it.id);
+                const willOpen = !openIds.has(it.id);
+
+                setOpenIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(it.id)) next.delete(it.id);
+                  else next.add(it.id);                  
+                  return next;
+                });
+
+                if (willOpen) ensureDetails(it.id);
               }}
             >
               <div className="text-[17px] font-semibold">
@@ -160,12 +178,15 @@ export default function HomePage(){
                       </div>
                     )}
 
-                    {(d.volume || d.issue || d.pageStart || d.pageEnd) && (
+                    {d.isPartOfNames?.[0] && (
                       <div>
-                        <span className="font-medium">Where:</span>{" "}
-                        {[d.volume && `Vol. ${d.volume}`, d.issue && `Issue ${d.issue}`, d.pageStart && `p. ${d.pageStart}`, d.pageEnd && `-${d.pageEnd}`]
-                          .filter(Boolean)
-                          .join(", ")}
+                        <span className="font-medium">Journal:</span> {d.isPartOfNames[0]}
+                      </div>
+                    )}
+
+                    {whereParts.length > 0 && (
+                      <div>
+                        <span className="font-medium">Where:</span> {whereParts.join(", ")}
                       </div>
                     )}
 

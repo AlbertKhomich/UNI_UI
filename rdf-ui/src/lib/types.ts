@@ -25,6 +25,7 @@ export type PaperDetails = {
     keywords?: string[];
     sameAs?: string[];
     urls?: string[];
+    isPartOfNames?: string[];
 
     volume?: string | null;
     issue?: string | null;
