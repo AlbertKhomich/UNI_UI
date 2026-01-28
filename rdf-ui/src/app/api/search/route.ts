@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { escapeSparqlStringLiteral, sparqlSelect } from "@/lib/sparql";
+import { toDisplayName } from "@/lib/format";
 
 const PREFIXES = `
 PREFIX schema: <https://schema.org/>
@@ -26,27 +27,22 @@ function cacheSet(key: string, value: any){
 function buildQuery(q: string, mode: "starts" | "contains") {
     const filter = 
     mode === "starts"
-      ? `FILTER(STRSTARTS(LCASE(STR(?t)), LCASE(STR(?q))))`
-      : `FILTER(CONTAINS(LCASE(STR(?t)), LCASE(STR(?q))))`;
+      ? `FILTER(STRSTARTS(LCASE(STR(?name)), LCASE(STR(?q))))`
+      : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(STR(?q))))`;
 
     return `${PREFIXES}
     SELECT
       ?paper
-      (SAMPLE(?t) AS ?title)
+      (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
-      (GROUP_CONCAT(DISTINCT ?aName; separator=", ") AS ?authors)
+      (GROUP_CONCAT(DISTINCT ?aName; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       VALUES ?q { "${q}" }
 
-      ?paper a ?type .
-      FILTER(?type IN (schema:ScholarlyArticle, schema:CreativeWork))
-
-      OPTIONAL { ?paper schema:title ?title0 . }
-      OPTIONAL { ?paper schema:name ?name0 . }
-      BIND(COALESCE(?title0, ?name0) AS ?t)
-      FILTER(BOUND(?t))
       FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+
+      ?paper schema:name ?name .
 
       OPTIONAL { ?paper schema:datePublished ?year0 . }
 
@@ -58,7 +54,7 @@ function buildQuery(q: string, mode: "starts" | "contains") {
       ${filter}
     }
     GROUP BY ?paper
-    ORDER BY LCASE(STR(SAMPLE(?t)))
+    ORDER BY LCASE(STR(SAMPLE(?name)))
     LIMIT 25
     `;
 }
@@ -102,13 +98,20 @@ export async function GET(req: Request) {
             const authorIris = (row.authorIris?.value ?? "")
               .split("|")
               .filter(Boolean);
+            const rawAuthors = row.authors?.value ?? ""
+            const authorsText = rawAuthors
+                .split(";")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map(toDisplayName)
+                .join(", ")
     
             return {
                 id: toPaperId(paperIri),
                 iri: paperIri,
                 title: row.title?.value ?? "",
                 year: row.year?.value ?? undefined,
-                authorsText: row.authors?.value ?? "",
+                authorsText,
                 authors: authorIris.map((iri) => ({ id: toPersonId(iri), iri})),
             };
         });

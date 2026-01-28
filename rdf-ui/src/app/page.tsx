@@ -2,14 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link";
-
-type Item = {
-  id: string;
-  iri: string;
-  title: string;
-  year?: string;
-  authorsText: string;
-};
+import type { PaperDetails, SearchItem } from "@/lib/types";
 
 function useDebounce<T>(value: T, delayMs = 350) {
   const [v, setV] = useState(value);
@@ -23,9 +16,14 @@ function useDebounce<T>(value: T, delayMs = 350) {
 export default function HomePage(){
   const [q, setQ] = useState("");
   const dq = useDebounce(q, 400);
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<SearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [details, setDetails] = useState<Record<string, PaperDetails>>({});
+  const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
+  const [detailsErr, setDetailsErr] = useState<Record<string, string>>({});
 
   const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
 
@@ -33,7 +31,11 @@ export default function HomePage(){
     let cancelled = false;
 
     async function run() {
+      setOpenId(null);
+
       if (!canSearch) {
+        setDetailsErr({});
+        setDetailsLoading({});
         setItems([]);
         setErr(null);
         return;
@@ -42,14 +44,16 @@ export default function HomePage(){
       setErr(null);
       try {
         const r = await fetch(`/api/search?title=${encodeURIComponent(dq.trim())}`);
-        let j: any = null;
         const ct = r.headers.get("content-type") ?? "";
+
+        let j: any = null;
         if (ct.includes("application/json")) {
           j = await r.json();
         } else {
           const text = await r.text();
           throw new Error(text || `HTTP ${r.status}`);
         }
+
         if (!r.ok) throw new Error(j?.error ?? "Search failed");
         if (!cancelled) setItems(j.items ?? []);
       } catch (e: any) {
@@ -64,6 +68,33 @@ export default function HomePage(){
       cancelled = true;
     };
   }, [dq, canSearch]);
+
+  async function ensureDetails(id: string) {
+    if (details[id] || detailsLoading[id]) return;
+
+    setDetailsLoading((m) => ({ ...m, [id]: true }));
+    setDetailsErr((m) => ({ ...m, [id]: ""}));
+
+    try {
+      const r = await fetch(`/api/paper?id=${encodeURIComponent(id)}`);
+      const ct = r.headers.get("content-type") ?? "";
+
+      let j: any = null
+      if (ct.includes("application/json")) {
+        j = await r.json()
+      } else {
+        const text = await r.text();
+        throw new Error(text || `HTTP ${r.status}`);
+      }
+
+      if (!r.ok) throw new Error((j as any)?.error ?? "Failed to load paper");
+      setDetails((m) => ({ ...m, [id]: j }));
+    } catch (e: any) {
+      setDetailsErr((m) => ({ ...m, [id]: e?.message ?? "Error"}));
+    } finally {
+      setDetailsLoading((m) => ({ ...m, [id]: false }));
+    }
+  }
 
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
@@ -83,18 +114,96 @@ export default function HomePage(){
       </div>
 
       <ul className="mt-4 space-y-2">
-        {items.map((it) => (
-          <li key={it.iri} className="rounded-xl border border-gray-200 p-4">
-            <Link href={`/paper/${encodeURIComponent(it.id)}`} className="text-[17px] font-semibold">
-              {it.title || it.id}
-            </Link>
-            <div className="mt-1.5 text-sm text-gray-600">
-              <span>{it.year ?? "—"}</span>
-              <span className="mx-2">·</span>
-              <span>{it.authorsText || "Authors: -"}</span>
-            </div>
+        {items.map((it) => {
+          const isOpen = openId === it.id;
+          const d = details[it.id];
+          const keywords = d?.keywords ?? [];
+          const loadingD = !!detailsLoading[it.id];
+          const errD = detailsErr[it.id];
+
+          return (
+          <li 
+            key={it.iri} 
+            className={`rounded-xl border p-4 transition ${
+              isOpen ? "border-gray-400" : "border-gray-200"
+            }`}
+          >
+            <button
+              type="button"
+              className="text-left w-full"
+              onClick={() => {
+                const next = isOpen ? null : it.id;
+                setOpenId(next);
+                if (!isOpen) ensureDetails(it.id);
+              }}
+            >
+              <div className="text-[17px] font-semibold">
+                {it.title || it.id}
+              </div>
+              <div className="mt-1.5 text-sm text-gray-300">
+                <span>{it.year ?? "—"}</span>
+                <span className="mx-2">·</span>
+                <span>{it.authorsText || "Authors: —"}</span>
+              </div>
+            </button>
+            
+            {isOpen && (
+              <div className="mt-3 border-t border-gray-200 pt-3 text-sm text-gray-300">
+                {loadingD && <div>Loading details...</div>}
+                {errD && <div className="text-red-600">{errD}</div>}
+
+                {d && !loadingD && !errD && (
+                  <div className="space-y-2">
+                    {d.subtitle && (
+                      <div>
+                        <span className="font-medium">Subtitle:</span> {d.subtitle}
+                      </div>
+                    )}
+
+                    {(d.volume || d.issue || d.pageStart || d.pageEnd) && (
+                      <div>
+                        <span className="font-medium">Where:</span>{" "}
+                        {[d.volume && `Vol. ${d.volume}`, d.issue && `Issue ${d.issue}`, d.pageStart && `p. ${d.pageStart}`, d.pageEnd && `-${d.pageEnd}`]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </div>
+                    )}
+
+                    {keywords.length > 0 && (
+                      <div>
+                        <span className="font-medium">Keywords:</span>{" "}
+                        {keywords.slice(0, 12).join(", ")}
+                      </div>
+                    )}
+
+                    {d.abstract && (
+                      <div className="text-gray-400">
+                        <span className="font-medium">Abstract:</span>{" "}
+                        <span className="block mt-1 text-gray-200 line-clamp-4">
+                          {d.abstract}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      {d.sameAs?.[0] && (
+                        <a className="underline" href={d.sameAs[0]} target="_blank" rel="noreferrer">
+                          DOI / sameAs
+                        </a>
+                      )}
+                      {d.urls?.[0] && (
+                        <a className="underline" href={d.urls[0]} target="_blank" rel="noreferrer">
+                          URL
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </main>
   );
