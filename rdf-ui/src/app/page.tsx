@@ -43,7 +43,7 @@ export default function HomePage(){
       setLoading(true);
       setErr(null);
       try {
-        const r = await fetch(`/api/search?title=${encodeURIComponent(dq.trim())}`);
+        const r = await fetch(`/api/search?q=${encodeURIComponent(dq.trim())}`);
         const ct = r.headers.get("content-type") ?? "";
 
         let j: any = null;

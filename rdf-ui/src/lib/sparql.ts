@@ -11,12 +11,13 @@ function mustGetEnv(name: string): string {
 }
 
 export function escapeSparqlStringLiteral(input: string): string {
-    return input
+    const s = (input ?? "")
         .replace(/\\/g, "\\\\")
         .replace(/"/g, '\\"')
         .replace(/\n/g, "\\n")
         .replace(/\r/g, "\\r")
         .replace(/\t/g, "\\t");
+    return `"${s}"`;
 }
 
 export async function sparqlSelect(query: string): Promise<SparqlRow[]> {
