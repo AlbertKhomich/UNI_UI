@@ -2,7 +2,7 @@ export type SparqlBindingValue =
 | { type: "uri"; value: string }
 | { type: "literal"; value: string; "xml:lang"?: string; datatype?: string };
 
-export type SparqlRow = Record<string, SparqlBindingValue>;
+export type SparqlRow = Record<string, SparqlBindingValue | undefined>;
 
 function mustGetEnv(name: string): string {
     const v = process.env[name];

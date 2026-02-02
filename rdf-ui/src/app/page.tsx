@@ -218,6 +218,21 @@ export default function HomePage(){
                         </a>
                       )}
                     </div>
+                    <div>
+                      <span className="font-medium">Authors:</span>
+                      <ul className="mt-1 space-y-1">
+                        {d.authorsDetailed?.map((a) => (
+                          <li key={a.iri}>
+                            <div className="text-gray-200">{a.name}</div>
+                            {a.affiliations.length > 0 && (
+                              <div className="text-xs text-gray-400">
+                                {a.affiliations.slice(0, 3).join(" · ")}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 )}
               </div>

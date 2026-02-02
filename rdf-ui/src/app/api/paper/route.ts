@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sparqlSelect } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
+import { SparqlRow } from "@/lib/sparql";
 
 const PREFIXES = `
 PREFIX schema: <https://schema.org/>
@@ -10,6 +11,31 @@ PREFIX dcterms: <http://purl.org/dc/terms/>
 
 function paperIriFromId(id: string) {
     return `https://dice-research.org/id/publication/ris/${encodeURIComponent(id)}`;
+}
+
+function cleanAffiliation(s: string): string | null {
+  let t = (s ?? "").trim();
+  if (!t) return null;
+
+  t = t.replace(/\s+/g, " ");
+  t = t.replace(/[\s,;:]+$/g, "");
+
+  if (/^journal\s*:/i.test(t)) return null;
+
+  if (t.length < 3) return null;
+  return t;
+}
+
+function uniqCaseInsensitive(list: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of list) {
+    const key = x.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+  }
+  return out;
 }
 
 export async function GET(req: Request) {
@@ -42,10 +68,6 @@ export async function GET(req: Request) {
           (GROUP_CONCAT(DISTINCT STR(?publisherName); separator="|") AS ?publisherNames)
           (SAMPLE(?access) AS ?accessRights)
           (GROUP_CONCAT(DISTINCT STR(?license); separator="|") AS ?licenses)
-          (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
-          (GROUP_CONCAT(DISTINCT STR(?aName); separator="; ") AS ?authorNames)
-          (GROUP_CONCAT(DISTINCT STR(?e); separator="|") AS ?editorIris)
-          (GROUP_CONCAT(DISTINCT STR(?eName); separator="; ") AS ?editorNames)
         WHERE {
           BIND(<${paperIri}> AS ?paper)
 
@@ -78,19 +100,36 @@ export async function GET(req: Request) {
             ?paper schema:publisher ?publisher .
             OPTIONAL { ?publisher schema:name ?publisherName . }
           }
-          
-          OPTIONAL {
-            ?paper schema:author ?a .
-            OPTIONAL { ?a schema:name ?aName . }
-          }
-          
-          OPTIONAL {
-            ?paper schema:editor ?e .
-            OPTIONAL { ?e schema:name ?eName . }
-          }
         }
         GROUP BY ?paper
         LIMIT 1
+        `;
+
+        const authorQuery = `${PREFIXES}
+        SELECT
+          ?a
+          (sample(?aName0) as ?name)
+          (group_concat(distinct ?affLabel; separator="|") as ?affs)
+        where {
+          bind(<${paperIri}> as ?paper)
+          ?paper schema:author ?a .
+
+          optional { ?a schema:name ?aName0 . }
+
+          optional {
+            ?a schema:affiliation ?aff . 
+            optional { ?aff schema:name ?affName. }
+            
+            bind(
+              if(isIRI(?aff),
+              coalesce(?affName, str(?aff)),
+              str(?aff)
+              ) as ?affLabel
+            )
+          }
+        }
+        group by ?a
+        order by lcase(str(?name))
         `;
 
         const rows = await sparqlSelect(query);
@@ -98,12 +137,31 @@ export async function GET(req: Request) {
 
         const row: any = rows[0];
 
+        const authorRows = (await sparqlSelect(authorQuery)) as SparqlRow[];
+
+        const authorsDetailed = authorRows.map((r) => {
+          const iri = r.a?.value ?? "";
+          const name = toDisplayName((r.name?.value ?? iri).trim());
+
+          const affsRaw = (r.affs?.value ?? "")
+            .split("|")
+            .map((x: string) => x.trim())
+            .filter(Boolean);
+
+          const affiliations = uniqCaseInsensitive(
+            affsRaw
+              .map(cleanAffiliation)
+              .filter((x): x is string => x != null)
+          );
+
+          return { iri, name, affiliations };
+        });
+
+        const authors = authorsDetailed.map((a) => a.name);
+
         const split = (s: string, sep: string) => (s ? s.split(sep).map((x) => x.trim()).filter(Boolean) : []);
         const splitPipe = (s: string) => split(s, "|");
         const splitSemi = (s: string) => split(s, ";");
-
-        const authorNames = splitSemi(row.authorNames?.value ?? "").map(toDisplayName);
-        const editorNames = splitSemi(row.editorNames?.value ?? "").map(toDisplayName);
 
         return NextResponse.json({
             id,
@@ -126,8 +184,8 @@ export async function GET(req: Request) {
             accessRights: row.accessRights?.value ?? null,
             licenses: splitPipe(row.licenses?.value ?? ""),
             publisherNames: splitPipe(row.publisherNames?.value ?? ""),
-            authors: authorNames,
-            editors: editorNames,
+            authors,
+            authorsDetailed,
         });
     } catch (e: any) {
         return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });

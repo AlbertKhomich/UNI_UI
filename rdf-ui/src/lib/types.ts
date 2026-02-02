@@ -10,6 +10,12 @@ export type SearchResponse = {
     items: SearchItem[];
 }
 
+export type PersonWithAffiliations = {
+    iri: string;
+    name: string;
+    affiliations: string[];
+};
+
 export type PaperDetails = {
     id: string;
     iri: string;
@@ -21,6 +27,8 @@ export type PaperDetails = {
 
     authors?: string[];
     editors?: string[];
+
+    authorsDetailed?: PersonWithAffiliations[];
 
     keywords?: string[];
     sameAs?: string[];
