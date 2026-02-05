@@ -89,19 +89,19 @@ function buildDirectQuery(paperIri: string) {
       (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
       (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
-      (GROUP_CONCAT(DISTINCT STR(?a0); separator="|") AS ?authorIris)
+      (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       BIND(<${paperIri}> AS ?paper)
       OPTIONAL { ?paper schema:name ?name . }
       OPTIONAL { ?paper schema:datePublished ?year0 . }
-
-      OPTIONAL {
-        ?paper schema:author ?a0 .
+      optional {
         {
-          select ?a0 (min(str(?aName0)) as ?aNamePick) where {
-            optional { ?a0 schema:name ?aName0 . }
+          select ?paper ?a (min(str(?aName)) as ?aNamePick)
+          where {
+            ?paper schema:author ?a .
+            optional { ?a schema:name ?aName . }
           }
-          group by ?a0
+            group by ?paper ?a
         }
       }
     }
@@ -158,20 +158,18 @@ function buildSearchQuery(args: {
 
       ?paper schema:name ?name .
       ${titleFilter}
-
       OPTIONAL { ?paper schema:datePublished ?year0 . }
       ${yearFilter}
-
-      OPTIONAL {
-        ?paper schema:author ?a .
+      optional {
         {
-          select ?a (min(str(?aName)) as ?aNamePick) where {
+          select ?paper ?a (min(str(?aName)) as ?aNamePick)
+          where {
+            ?paper schema:author ?a .
             optional { ?a schema:name ?aName . }
           }
-          group by ?a
+            group by ?paper ?a
         }
       }
-
       ${authorExists}
     }
     GROUP BY ?paper
