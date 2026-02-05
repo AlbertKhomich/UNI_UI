@@ -13,6 +13,20 @@ function paperIriFromId(id: string) {
     return `https://dice-research.org/id/publication/ris/${encodeURIComponent(id)}`;
 }
 
+function extractDoiFromIdentifier(s: string): string | null {
+  let t = (s ?? "").trim();
+  if (!t) return null;
+
+  const m = t.match(/^DOI:\s*(10\.\d{4,9}\/\S+)\s*$/);
+  if (!m) return null;
+
+  return m[1]
+}
+
+function doiToUrl(doi: string): string {
+  return `https://doi.org/${doi}`;
+}
+
 function cleanAffiliation(s: string): string | null {
   let t = (s ?? "").trim();
   if (!t) return null;
@@ -56,7 +70,7 @@ export async function GET(req: Request) {
           (SAMPLE(?year0) AS ?year)
           (SAMPLE(?abs) AS ?abstract)
           (GROUP_CONCAT(DISTINCT ?kw; separator="; ") AS ?keywords)
-          (GROUP_CONCAT(DISTINCT STR(?sameAs0); separator="|") AS ?sameAs)
+          (GROUP_CONCAT(DISTINCT STR(?ident0); separator="|") AS ?identifiers)
           (GROUP_CONCAT(DISTINCT STR(?url0); separator="|") AS ?urls)
           (GROUP_CONCAT(DISTINCT STR(?partOf); separator="|") AS ?isPartOf)
           (GROUP_CONCAT(DISTINCT STR(?partOfName); separator="|") AS ?isPartOfNames)
@@ -78,8 +92,7 @@ export async function GET(req: Request) {
           OPTIONAL { ?paper schema:datePublished ?year0 . }
           OPTIONAL { ?paper schema:abstract ?abs . }
           OPTIONAL { ?paper schema:keywords ?kw . }
-          
-          OPTIONAL { ?paper schema:sameAs ?sameAs0 . }
+          OPTIONAL { ?paper schema:identifier ?ident0 . }
           OPTIONAL { ?paper schema:url ?url0 . }
 
           OPTIONAL { 
@@ -157,11 +170,20 @@ export async function GET(req: Request) {
           return { iri, name, affiliations };
         });
 
-        const authors = authorsDetailed.map((a) => a.name);
-
         const split = (s: string, sep: string) => (s ? s.split(sep).map((x) => x.trim()).filter(Boolean) : []);
         const splitPipe = (s: string) => split(s, "|");
         const splitSemi = (s: string) => split(s, ";");
+
+        const authors = authorsDetailed.map((a) => a.name);
+        const identifiers = splitPipe(row.identifiers?.value ?? "");
+
+        const doi =
+          identifiers
+            .map(extractDoiFromIdentifier)
+            .find((x): x is string => !!x) ?? null;
+
+        const doiUrl = doi ? doiToUrl(doi) : null;
+
 
         return NextResponse.json({
             id,
@@ -172,7 +194,7 @@ export async function GET(req: Request) {
             year: row.year?.value ?? null,
             abstract: row.abstract?.value ?? null,
             keywords: splitSemi(row.keywords?.value ?? ""),
-            sameAs: splitPipe(row.sameAs?.value ?? ""),
+            sameAs: doiUrl,
             urls: splitPipe(row.urls?.value ?? ""),
             isPartOf: splitPipe(row.isPartOf?.value ?? ""),
             isPartOfNames: splitPipe(row.isPartOfNames?.value ?? ""),

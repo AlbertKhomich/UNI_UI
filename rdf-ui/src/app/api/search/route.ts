@@ -88,15 +88,21 @@ function buildDirectQuery(paperIri: string) {
       ?paper
       (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
-      (GROUP_CONCAT(DISTINCT ?aName0; separator=";") AS ?authors)
+      (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a0); separator="|") AS ?authorIris)
     WHERE {
       BIND(<${paperIri}> AS ?paper)
       OPTIONAL { ?paper schema:name ?name . }
       OPTIONAL { ?paper schema:datePublished ?year0 . }
+
       OPTIONAL {
         ?paper schema:author ?a0 .
-        OPTIONAL { ?a0 schema:name ?aName0 . }
+        {
+          select ?a0 (min(str(?aName0)) as ?aNamePick) where {
+            optional { ?a0 schema:name ?aName0 . }
+          }
+          group by ?a0
+        }
       }
     }
     GROUP BY ?paper
@@ -145,7 +151,7 @@ function buildSearchQuery(args: {
       ?paper
       (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
-      (GROUP_CONCAT(DISTINCT ?aName; separator=";") AS ?authors)
+      (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
@@ -158,7 +164,12 @@ function buildSearchQuery(args: {
 
       OPTIONAL {
         ?paper schema:author ?a .
-        OPTIONAL { ?a schema:name ?aName . }
+        {
+          select ?a (min(str(?aName)) as ?aNamePick) where {
+            optional { ?a schema:name ?aName . }
+          }
+          group by ?a
+        }
       }
 
       ${authorExists}

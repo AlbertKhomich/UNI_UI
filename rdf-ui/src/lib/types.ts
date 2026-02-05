@@ -31,7 +31,7 @@ export type PaperDetails = {
     authorsDetailed?: PersonWithAffiliations[];
 
     keywords?: string[];
-    sameAs?: string[];
+    sameAs?: string;
     urls?: string[];
     isPartOfNames?: string[];
 

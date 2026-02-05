@@ -207,8 +207,8 @@ export default function HomePage(){
                     )}
 
                     <div className="flex flex-wrap gap-3 pt-1">
-                      {d.sameAs?.[0] && (
-                        <a className="underline" href={d.sameAs[0]} target="_blank" rel="noreferrer">
+                      {d.sameAs && (
+                        <a className="underline" href={d.sameAs} target="_blank" rel="noreferrer">
                           DOI / sameAs
                         </a>
                       )}
