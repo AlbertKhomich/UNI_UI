@@ -14,6 +14,7 @@ export type PersonWithAffiliations = {
     iri: string;
     name: string;
     affiliations: string[];
+    ccRaw?: string[];
 };
 
 export type PaperDetails = {

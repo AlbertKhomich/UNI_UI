@@ -123,6 +123,7 @@ export async function GET(req: Request) {
           ?a
           (sample(?aName0) as ?name)
           (group_concat(distinct ?affLabel; separator="|") as ?affs)
+          (group_concat(distinct str(?cc0); separator="|") as ?countryCodes)
         where {
           bind(<${paperIri}> as ?paper)
           ?paper schema:author ?a .
@@ -131,14 +132,13 @@ export async function GET(req: Request) {
 
           optional {
             ?a schema:affiliation ?aff . 
-            optional { ?aff schema:name ?affName. }
-            
-            bind(
-              if(isIRI(?aff),
-              coalesce(?affName, str(?aff)),
-              str(?aff)
-              ) as ?affLabel
-            )
+            optional { ?aff schema:name ?affName . }
+            bind(coalesce(str(?affName), str(?aff)) as ?affLabel)
+          }
+
+          optional {
+            ?a schema:affiliation ?aff2 .
+            ?aff2 schema:addressCountry ?cc0 .
           }
         }
         group by ?a
@@ -167,7 +167,12 @@ export async function GET(req: Request) {
               .filter((x): x is string => x != null)
           );
 
-          return { iri, name, affiliations };
+          const ccRaw = (r.countryCodes?.value ?? "")
+            .split("|")
+            .map((x: string) => x.trim())
+            .filter(Boolean);
+
+          return { iri, name, affiliations, ccRaw };
         });
 
         const split = (s: string, sep: string) => (s ? s.split(sep).map((x) => x.trim()).filter(Boolean) : []);

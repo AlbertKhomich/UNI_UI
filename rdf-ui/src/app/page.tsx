@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react"
 import type { PaperDetails, SearchItem } from "@/lib/types";
 
+function ccToFlag(cc: string): string {
+  const A = 0x1f1e6;
+  const first = A + (cc.charCodeAt(0) - 65);
+  const second = A + (cc.charCodeAt(1) - 65)
+  return String.fromCodePoint(first, second)
+}
+
 function useDebounce<T>(value: T, delayMs = 350) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -223,10 +230,21 @@ export default function HomePage(){
                       <ul className="mt-1 space-y-1">
                         {d.authorsDetailed?.map((a) => (
                           <li key={a.iri}>
-                            <div className="text-gray-200">{a.name}</div>
+                            <div className="text-gray-200">
+                              {a.name}
+                              {a.ccRaw?.length ? (
+                                <div title={a.ccRaw!.join(", ")}>
+                                  {a.ccRaw.map((cc) => (
+                                    <span key={cc} className="mr-1">
+                                      {ccToFlag(cc)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
                             {a.affiliations.length > 0 && (
                               <div className="text-xs text-gray-400">
-                                {a.affiliations.slice(0, 3).join(" · ")}
+                                {a.affiliations.join(" · ")}
                               </div>
                             )}
                           </li>
