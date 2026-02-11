@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react"
-import type { PaperDetails, SearchItem } from "@/lib/types";
+import type { PaperDetails, SearchItem, Row } from "@/lib/types";
+import UsersByCountryWidget from "@/components/CountryWidget";
+import { packTailIntoOther } from "@/lib/rows";
 
 function ccToFlag(cc: string): string {
   const A = 0x1f1e6;
@@ -19,7 +21,28 @@ function useDebounce<T>(value: T, delayMs = 350) {
   return v;
 }
 
-export default function HomePage(){
+function cctoName(cc: string, locale: string = "en"): string {
+  const code = (cc || "")
+  try {
+    const dn = new Intl.DisplayNames([locale], { type: "region" });
+    return dn.of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i ++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function ccToColor(cc: string): string {
+  const hue = hashString(cc.toUpperCase()) % 360;
+  return `hsl(${hue} 70% 55%)`;
+}
+
+export default function HomePage() {
   const [q, setQ] = useState("");
   const dq = useDebounce(q, 400);
   const [items, setItems] = useState<SearchItem[]>([]);
@@ -31,7 +54,54 @@ export default function HomePage(){
   const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
   const [detailsErr, setDetailsErr] = useState<Record<string, string>>({});
 
+  const [CountryRows, setCountryRows] = useState<Row[]>([]);
+  const [countryLoading, setCountryLoading] = useState(false);
+  const [countryErr, setCountryErr] = useState<string | null>(null);
+
+  const [totalPapers, setTotalPapers] = useState<number>(0);
+
   const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCountries() {
+      setCountryLoading(true);
+      setCountryErr(null);
+      try {
+        const r = await fetch(`/api/top-countries`, {cache: "no-store"});
+        const ct = r.headers.get("content-type") ?? "";
+
+        let j: any = null;
+        if (ct.includes("application/json")) j = await r.json() 
+        else throw new Error((await r.text()) || `HTTP ${r.status}`);
+
+        if (!r.ok) throw new Error(j?.error ?? "Failed to load countries");
+        const mapped: Row[] = (j.rows.rows ?? []).map((x: any) => {
+          const cc = String(x.name);
+          const papers = Number(x.value) || 0;
+
+          const label = `${ccToFlag(cc)} ${cctoName(cc, "en")}`;
+
+          return { name: label, value: papers, color: ccToColor(cc), };
+        });
+        const packed = packTailIntoOther(mapped, { minItemsKeep: 3});
+
+        if (!cancelled) {
+          setCountryRows(packed);
+          setTotalPapers(Number(j.rows.totalPapers) || 0);
+        };
+      } catch (e: any) {
+        if (!cancelled) setCountryErr(e?.message ?? "Error");
+      } finally {
+        if (!cancelled) setCountryLoading(false);
+      }
+    }
+
+    loadCountries();
+
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +329,18 @@ export default function HomePage(){
           );
         })}
       </ul>
+      {countryErr ? (
+        <div className="mb-3 text-sm text-red-600">{countryErr}</div>
+      ) : null}
+
+      <UsersByCountryWidget
+        rows={CountryRows}
+        totalOverride={totalPapers}
+      />
+
+      {countryLoading ? (
+        <div className="mt-2 text-xs text-gray-400">Loading countries...</div>
+      ) : null}
     </main>
   );
 

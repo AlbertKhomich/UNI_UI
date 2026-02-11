@@ -1,3 +1,5 @@
+import React from "react";
+
 export type SearchItem = {
   id: string;
   iri: string;
@@ -41,3 +43,5 @@ export type PaperDetails = {
     pageStart?: string | null;
     pageEnd?: string | null;
 }
+
+export type Row = { name: string; value: number; color?: string };
