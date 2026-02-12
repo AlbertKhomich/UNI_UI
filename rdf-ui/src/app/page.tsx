@@ -297,7 +297,7 @@ export default function HomePage() {
                       <ul className="mt-1 space-y-1">
                         {d.authorsDetailed?.map((a) => (
                           <li key={a.iri}>
-                            <div className="text-gray-200">
+                            <div className="text-gray-200">                              
                               {a.name}
                             </div>
                             {a.affiliations.length > 0 && (
@@ -306,7 +306,14 @@ export default function HomePage() {
                                   const cc = a.ccRaw?.[i];
                                   return (
                                     <span key={`${a.iri}-aff-${i}`}>
-                                      <span title={aff}> {aff} </span>
+                                      <span title={aff.name}>
+                                      <a
+                                      href={aff.iri}
+                                      target="_blank"
+                                      rel="noopener noreferrer"                                      
+                                      >  {aff.name} 
+                                      </a>  
+                                      </span>
                                       {cc ? (
                                         <span className="ml-1" title={cc}>
                                           {ccToFlag(cc)}

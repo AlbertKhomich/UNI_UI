@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sparqlSelect } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
 import { SparqlRow } from "@/lib/sparql";
+import { Aff } from "@/lib/types";
 
 const PREFIXES = `
 PREFIX schema: <https://schema.org/>
@@ -25,31 +26,6 @@ function extractDoiFromIdentifier(s: string): string | null {
 
 function doiToUrl(doi: string): string {
   return `https://doi.org/${doi}`;
-}
-
-function cleanAffiliation(s: string): string | null {
-  let t = (s ?? "").trim();
-  if (!t) return null;
-
-  t = t.replace(/\s+/g, " ");
-  t = t.replace(/[\s,;:]+$/g, "");
-
-  if (/^journal\s*:/i.test(t)) return null;
-
-  if (t.length < 3) return null;
-  return t;
-}
-
-function uniqCaseInsensitive(list: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const x of list) {
-    const key = x.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(x);
-  }
-  return out;
 }
 
 export async function GET(req: Request) {
@@ -118,31 +94,36 @@ export async function GET(req: Request) {
         LIMIT 1
         `;
 
-        const authorQuery = `${PREFIXES}
+        const authorQuery = `
+        ${PREFIXES}
         SELECT
-          ?a
-          (sample(?aName0) as ?name)
-          (group_concat(distinct ?affLabel; separator="|") as ?affs)
-          (group_concat(distinct str(?cc0); separator="|") as ?countryCodes)
-        where {
-          bind(<${paperIri}> as ?paper)
-          ?paper schema:author ?a .
+        ?a
+        (SAMPLE(?aName0) AS ?name)
+        (GROUP_CONCAT(DISTINCT ?affPair; separator="|") AS ?affs)
+        (GROUP_CONCAT(DISTINCT STR(?cc0); separator="|") AS ?countryCodes)
+      WHERE {
+        BIND(<${paperIri}> AS ?paper)
+        ?paper schema:author ?a .
 
-          optional { ?a schema:name ?aName0 . }
+        OPTIONAL { ?a schema:name ?aName0 . }
 
-          optional {
-            ?a schema:affiliation ?aff . 
-            optional { ?aff schema:name ?affName . }
-            bind(coalesce(str(?affName), str(?aff)) as ?affLabel)
-          }
+        OPTIONAL {
+          ?a schema:affiliation ?aff .
 
-          optional {
-            ?a schema:affiliation ?aff2 .
-            ?aff2 schema:addressCountry ?cc0 .
-          }
+          OPTIONAL { ?aff schema:name ?affName . }
+          BIND(COALESCE(STR(?affName), STR(?aff)) AS ?affLabel)
+
+          # make a stable "pair": label + iri
+          BIND(CONCAT(?affLabel, "|||", STR(?aff)) AS ?affPair)
         }
-        group by ?a
-        order by lcase(str(?name))
+
+        OPTIONAL {
+          ?a schema:affiliation ?aff2 .
+          ?aff2 schema:addressCountry ?cc0 .
+        }
+      }
+      GROUP BY ?a
+      ORDER BY LCASE(STR(?name))
         `;
 
         const rows = await sparqlSelect(query);
@@ -161,11 +142,14 @@ export async function GET(req: Request) {
             .map((x: string) => x.trim())
             .filter(Boolean);
 
-          const affiliations = uniqCaseInsensitive(
-            affsRaw
-              .map(cleanAffiliation)
-              .filter((x): x is string => x != null)
-          );
+          const affiliations: Aff[] = []
+          for (let i = 0; i + 1 < affsRaw.length; i += 2) {
+            const name = affsRaw[i];
+            const iri = affsRaw[i + 1];
+
+            if (!name || !iri) continue;
+            affiliations.push({ name, iri})
+          }
 
           const ccRaw = (r.countryCodes?.value ?? "")
             .split("|")

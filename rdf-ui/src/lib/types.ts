@@ -1,5 +1,3 @@
-import React from "react";
-
 export type SearchItem = {
   id: string;
   iri: string;
@@ -15,8 +13,13 @@ export type SearchResponse = {
 export type PersonWithAffiliations = {
     iri: string;
     name: string;
-    affiliations: string[];
+    affiliations: Aff[];
     ccRaw?: string[];
+};
+
+export type Aff = {
+    name: string; 
+    iri: string
 };
 
 export type PaperDetails = {
