@@ -47,22 +47,44 @@ function extractRisIdFromAnything(input: string): string | null {
     return null;
 }
 
-function parseOmni(raw: string): { titleQ: string; authorQ: string; yearQ: string; directRisId: string | null } {
+function parseOmni(raw: string): { 
+  titleQ: string; 
+  authorQ: string; 
+  yearQ: string; 
+  directRisId: string | null;
+  directAuthorIri: string | null;
+} {
     const s = (raw ?? "").trim();
 
     const directRisId = extractRisIdFromAnything(s);
-    if (directRisId) return { titleQ: "", authorQ: "", yearQ: "", directRisId };
+    if (directRisId) return { titleQ: "", authorQ: "", yearQ: "", directRisId, directAuthorIri: null };
 
-    if (/^\d{4}$/.test(s)) return { titleQ: "", authorQ: "", yearQ: s, directRisId: null };
+    const mAuthorIri = s.match(/^\s*(?:a|author)\s*:\s*(<)?(https?:\/\/\S+?)\1?\s*$/i);
+    if (mAuthorIri?.[2]) {
+      const iri = mAuthorIri[2].trim().replace(/[)>.,;]+$/, "");
+      return { titleQ: "", authorQ: "", yearQ: "", directRisId: null, directAuthorIri: iri };
+    }
+
+    if (/^\d{4}$/.test(s)) return { titleQ: "", authorQ: "", yearQ: s, directRisId: null, directAuthorIri: null };
 
     let titleQ = s;
     let authorQ = "";
     let yearQ = "";
+    let directAuthorIri: string | null = null;
 
     const authorMatch = titleQ.match(/\b(?:author|a)\s*:\s*([^]+?)(?=\s+\b(?:year|y)\s*:|$)/i);
     if (authorMatch?.[1]) {
-        authorQ = authorMatch[1].trim();
-        titleQ = titleQ.replace(authorMatch[0], " ").trim();
+      const v = authorMatch[1].trim();
+
+      const iri2 = v.match(/^(<)?(https?:\/\/\S+?)\1?$/i);
+      if (iri2?.[2]) {
+        directAuthorIri = iri2[2].trim().replace(/[)>.,;]+$/, "");
+        authorQ = "";
+      } else {
+        authorQ = v;
+      }
+
+      titleQ = titleQ.replace(authorMatch[0], " ").trim()
     }
 
     const yearMatch = titleQ.match(/\b(?:year|y)\s*:\s*(\d{4})\b/i);
@@ -77,9 +99,9 @@ function parseOmni(raw: string): { titleQ: string; authorQ: string; yearQ: strin
             yearQ = looseYear[1];
             titleQ = titleQ.replace(looseYear[0], " ").trim();
         }
-        }
+    }
 
-        return { titleQ: titleQ.trim(), authorQ, yearQ, directRisId: null };
+        return { titleQ: titleQ.trim(), authorQ, yearQ, directRisId: null, directAuthorIri };
     }
 
 function buildDirectQuery(paperIri: string) {
@@ -114,9 +136,10 @@ function buildSearchQuery(args: {
     titleQ: string;
     authorQ: string;
     yearQ: string;
+    directAuthorIri?: string | null;
     mode: "starts" | "contains";
 }) {
-    const { titleQ, authorQ, yearQ, mode } = args;
+    const { titleQ, authorQ, yearQ, directAuthorIri, mode } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
     const authorLit = authorQ ? escapeSparqlStringLiteral(authorQ) : "";
@@ -136,15 +159,35 @@ function buildSearchQuery(args: {
         ` 
         : "";
 
-    const authorExists = authorQ
-      ? `
-      FILTER EXISTS {
-        ?paper schema:author ?aa .
-        ?aa schema:name ?aaName .
-        FILTER(CONTAINS(LCASE(STR(?aaName)), LCASE(${authorLit})))
-      }
-      `
+    const authorIriFilter = directAuthorIri
+      ? `?paper schema:author <${directAuthorIri}> .`
       : "";
+
+    const authorExists = (() => {
+      if (!authorQ) return "";
+
+      const v = authorQ.trim();
+
+      const iriMatch = v.match(/^(<)?(https?:\/\/\S+?)\1?$/i);
+      if (iriMatch?.[2]) {
+        const authorIri = iriMatch[2].replace(/[)>.,;]+$/, "");
+        return `
+          filter exists {
+            ?paper schema:author <${authorIri}> .
+          }
+        `;
+      }
+
+      const authorLit = escapeSparqlStringLiteral(v);
+      return `
+        FILTER EXISTS {
+          ?paper schema:author ?aa .
+          ?aa schema:name ?aaName .
+          FILTER(CONTAINS(LCASE(STR(?aaName)), LCASE(${authorLit})))
+        }
+      `;
+    })();
+    
 
     return `${PREFIXES}
     SELECT
@@ -155,6 +198,8 @@ function buildSearchQuery(args: {
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+
+      ${authorIriFilter}
 
       ?paper schema:name ?name .
       ${titleFilter}
@@ -201,7 +246,7 @@ export async function GET(req: Request) {
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|id=${parsed.directRisId ?? ""}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
     
@@ -210,7 +255,7 @@ export async function GET(req: Request) {
         if (parsed.directRisId) {
             rows = await sparqlSelect(buildDirectQuery(paperIriFromId(parsed.directRisId)));
         } else {
-            if (!parsed.titleQ && !parsed.authorQ && !parsed.yearQ) {
+            if (!parsed.titleQ && !parsed.authorQ && !parsed.yearQ && !parsed.directAuthorIri) {
                 return NextResponse.json({ items: [] });
             }
 
