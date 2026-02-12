@@ -14,6 +14,7 @@ WHERE {
 }
 group by ?cc
 order by desc(?papersTotal)
+limit 4
 `
 
 const TOTAL_PAPERS_QUERY = `

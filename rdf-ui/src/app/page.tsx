@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import type { PaperDetails, SearchItem, Row } from "@/lib/types";
 import UsersByCountryWidget from "@/components/CountryWidget";
-import { packTailIntoOther } from "@/lib/rows";
 
 function ccToFlag(cc: string): string {
   const A = 0x1f1e6;
@@ -31,15 +30,9 @@ function cctoName(cc: string, locale: string = "en"): string {
   }
 }
 
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i ++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return h;
-}
-
-function ccToColor(cc: string): string {
-  const hue = hashString(cc.toUpperCase()) % 360;
-  return `hsl(${hue} 70% 55%)`;
+function ccToColor(rank: number): string {
+  const alpha = Math.max(0.2, 1 - rank * 0.2);
+  return `rgba(255,255,255,${alpha})`
 }
 
 export default function HomePage() {
@@ -69,7 +62,7 @@ export default function HomePage() {
       setCountryLoading(true);
       setCountryErr(null);
       try {
-        const r = await fetch(`/api/top-countries`, {cache: "no-store"});
+        const r = await fetch(`/api/top-countries`);
         const ct = r.headers.get("content-type") ?? "";
 
         let j: any = null;
@@ -83,9 +76,13 @@ export default function HomePage() {
 
           const label = `${ccToFlag(cc)} ${cctoName(cc, "en")}`;
 
-          return { name: label, value: papers, color: ccToColor(cc), };
+          return { name: label, value: papers };
         });
-        const packed = packTailIntoOther(mapped, { minItemsKeep: 3});
+
+        const packed = mapped.map((r, idx) => ({
+          ...r,
+          color: ccToColor(idx),
+        }));
 
         if (!cancelled) {
           setCountryRows(packed);
@@ -302,19 +299,22 @@ export default function HomePage() {
                           <li key={a.iri}>
                             <div className="text-gray-200">
                               {a.name}
-                              {a.ccRaw?.length ? (
-                                <div title={a.ccRaw!.join(", ")}>
-                                  {a.ccRaw.map((cc) => (
-                                    <span key={cc} className="mr-1">
-                                      {ccToFlag(cc)}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
                             </div>
                             {a.affiliations.length > 0 && (
                               <div className="text-xs text-gray-400">
-                                {a.affiliations.join(" · ")}
+                                {a.affiliations.map((aff, i) => {
+                                  const cc = a.ccRaw?.[i];
+                                  return (
+                                    <span key={`${a.iri}-aff-${i}`}>
+                                      <span title={aff}> {aff} </span>
+                                      {cc ? (
+                                        <span className="ml-1" title={cc}>
+                                          {ccToFlag(cc)}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             )}
                           </li>
