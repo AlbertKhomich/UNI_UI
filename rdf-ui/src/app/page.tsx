@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
+import Link from "next/link"
 import type { PaperDetails, SearchItem, Row } from "@/lib/types";
 import UsersByCountryWidget from "@/components/CountryWidget";
 
@@ -354,6 +356,22 @@ export default function HomePage() {
       {countryLoading ? (
         <div className="mt-2 text-xs text-gray-400">Loading countries...</div>
       ) : null}
+      <div className="mt-18 flex items-center justify-center">
+        <Link 
+          href="https://dice-research.org/" 
+          aria-label="Dice research group" 
+          rel="noreferrer" 
+          target="_blank"
+        >
+          <Image
+            src="logo.svg" 
+            alt="Dice group"
+            width={110}
+            height={55}
+            priority
+          />
+        </Link>
+      </div>
     </main>
   );
 
