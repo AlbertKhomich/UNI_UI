@@ -29,23 +29,29 @@ function withLineNumbers(s: string) {
 }
 
 function paperIriFromId(id: string) {
-    return `https://dice-research.org/id/publication/ris/${encodeURIComponent(id)}`;
+  const clean = (id ?? "").trim().replace(/^\/+/, "");
+  return `https://dice-research.org/id/publication/ris/${clean}`;
 }
+
 
 function extractRisIdFromAnything(input: string): string | null {
-    const s = (input ?? "").trim();
-    if (!s) return null;
+  const s0 = (input ?? "").trim();
+  if (!s0) return null;
 
-    const m = s.match(/\/id\/publication\/ris\/([^\/#?\s]+)(?:[?#].*)?$/);
-    if (m?.[1]) return m[1];
+  const s = s0.replace(/[)>.,;]+$/, ""); // remove trailing punctuation
 
-    const m2 = s.match(/^(?:ris|id)\s*:\s*([^\s]+)\s*$/i);
-    if (m2?.[1]) return m2[1];
+  // Capture EVERYTHING after /ris/ (including slashes) until ?/#/end
+  const m = s.match(/\/id\/publication\/ris\/(.+?)(?:[?#].*)?$/);
+  if (m?.[1]) return m[1];
 
-    if (/^\d+$/.test(s) && s.length !== 4) return s;
+  const m2 = s.match(/^(?:ris|id)\s*:\s*([^\s]+)\s*$/i);
+  if (m2?.[1]) return m2[1];
 
-    return null;
+  if (/^\d+$/.test(s) && s.length !== 4) return s;
+
+  return null;
 }
+
 
 function parseOmni(raw: string): { 
   titleQ: string; 
@@ -224,8 +230,8 @@ function buildSearchQuery(args: {
 }
 
 function toPaperId(paperIri: string): string {
-    const m = paperIri.match(/\/ris\/([^\/#]+)\s*$/);
-    return m?.[1] ?? paperIri;
+  const m = paperIri.match(/\/ris\/(.+?)(?:[?#].*)?$/);
+  return m?.[1] ?? paperIri;
 }
 
 function toPersonId(personIri: string): string {

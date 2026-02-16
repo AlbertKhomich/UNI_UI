@@ -11,7 +11,8 @@ PREFIX dcterms: <http://purl.org/dc/terms/>
 `;
 
 function paperIriFromId(id: string) {
-    return `https://dice-research.org/id/publication/ris/${encodeURIComponent(id)}`;
+  const clean = (id ?? "").trim().replace(/^\/+/, "");
+  return `https://dice-research.org/id/publication/ris/${clean}`;
 }
 
 function extractDoiFromIdentifier(s: string): string | null {
