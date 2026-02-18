@@ -7,6 +7,19 @@ function formatCompact(n: number) {
     return `${n}`;
 }
 
+function darkenColorSlightly(input: string): string {
+    const m = input.match(
+        /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i
+    );
+    if (!m) return input;
+
+    const r = Math.max(0, Math.min(255, Math.round(Number(m[1]) * 0.82)));
+    const g = Math.max(0, Math.min(255, Math.round(Number(m[2]) * 0.82)));
+    const b = Math.max(0, Math.min(255, Math.round(Number(m[3]) * 0.82)));
+    const a = m[4] !== undefined ? Math.max(0, Math.min(1, Number(m[4]))) : 1;
+    return `rgba(${r},${g},${b},${a})`;
+}
+
 export default function UsersByCountryWidget({
     rows,
     totalOverride,
@@ -14,6 +27,7 @@ export default function UsersByCountryWidget({
     rows: Row[];
     totalOverride: number;
 }) {
+    const [showAll, setShowAll] = React.useState(false);
 
     const denomDonut = rows.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
     
@@ -32,17 +46,49 @@ export default function UsersByCountryWidget({
         () => [...normalized].sort((a, b) => b.value - a.value),
         [normalized]
     );
+    const visibleRows = showAll ? sortedRows : sortedRows.slice(0, 4);
+    const fourthBarColor =
+        (sortedRows[3] as any)?.color ??
+        (sortedRows[sortedRows.length - 1] as any)?.color ??
+        "rgba(255,255,255,0.6)";
+    const tailColor = darkenColorSlightly(fourthBarColor);
+
+    const donutRows = React.useMemo(() => {
+        const top = sortedRows.slice(0, 4).map((r) => {
+            const isZeroPct = Number((r.pct * 100).toFixed(1)) === 0;
+            return {
+                pctDonut: r.pctDonut,
+                color: isZeroPct
+                    ? "rgba(0,0,0,1)"
+                    : (r as any).color ?? "rgba(255,255,255,0.6)",
+            };
+        });
+
+        if (sortedRows.length <= 4) return top;
+
+        const othersPctDonut = sortedRows
+            .slice(4)
+            .reduce((sum, r) => sum + r.pctDonut, 0);
+
+        return [
+            ...top,
+            {
+                pctDonut: othersPctDonut,
+                color: tailColor,
+            },
+        ];
+    }, [sortedRows, tailColor]);
 
     let acc = 0;
     const sep = 0.8
     const sepColor = "rgba(0,0,0,1)"
-    const stops = sortedRows
+    const stops = donutRows
         .map((r) => {
             const start = acc * 100;
             acc += r.pctDonut;
             const end = acc * 100;
 
-            const fill = (r as any).color ?? `rgba(255,255,255,0.6)`;
+            const fill = r.color;
 
             const endFill = end - sep;
             if (endFill <= start + 0.05) {
@@ -85,8 +131,14 @@ export default function UsersByCountryWidget({
                 </div>
     
                 <div className="space-y-5">
-                    {sortedRows.map((r) => {
+                    {visibleRows.map((r, idx) => {
                         const pct = r.pct * 100;
+                        const isZeroPct = Number(pct.toFixed(1)) === 0;
+                        const progressColor = isZeroPct
+                            ? "rgba(0,0,0,1)"
+                            : idx >= 3
+                                ? fourthBarColor
+                                : (r as any).color ?? "rgba(255,255,255,0.6)";
                         return (
                             <div key={r.name} className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -94,6 +146,7 @@ export default function UsersByCountryWidget({
                                         <div className="text-base font-medium text-white/80">{r.name}</div>
                                     </div>
                                     <div className="text-base font-medium text-white/55">
+                                        {formatCompact(r.value)} ({pct.toFixed(1)}%)
                                     </div>
                                 </div>
             
@@ -102,13 +155,24 @@ export default function UsersByCountryWidget({
                                         className="h-2 rounded-full"
                                         style={{
                                             width: `${pct}%`,
-                                            backgroundColor: (r as any).color ?? "rgba(255,255,255,0.6)",
+                                            backgroundColor: progressColor,
                                         }}
                                     />
                                 </div>
                             </div>
                         )
                     })}
+                    {sortedRows.length > 4 ? (
+                        <div>
+                            <button
+                                type="button"
+                                className="rounded-xl border border-gray-300 bg-transparent px-3 py-3 text-base transition-colors hover:bg-gray-900"
+                                onClick={() => setShowAll((v) => !v)}
+                            >
+                                {showAll ? "Show less countries" : "Show all countries"}
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             </div>
         </div>
