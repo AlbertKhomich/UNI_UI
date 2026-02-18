@@ -144,8 +144,10 @@ function buildSearchQuery(args: {
     yearQ: string;
     directAuthorIri?: string | null;
     mode: "starts" | "contains";
+    limit: number;
+    offset: number;
 }) {
-    const { titleQ, authorQ, yearQ, directAuthorIri, mode } = args;
+    const { titleQ, authorQ, yearQ, directAuthorIri, mode, limit, offset } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
     const authorLit = authorQ ? escapeSparqlStringLiteral(authorQ) : "";
@@ -225,7 +227,79 @@ function buildSearchQuery(args: {
     }
     GROUP BY ?paper
     ORDER BY LCASE(STR(SAMPLE(?name)))
-    LIMIT 25
+    LIMIT ${limit}
+    OFFSET ${offset}
+    `;
+}
+
+function buildCountQuery(args: {
+    titleQ: string;
+    authorQ: string;
+    yearQ: string;
+    directAuthorIri?: string | null;
+    mode: "starts" | "contains";
+}) {
+    const { titleQ, authorQ, yearQ, directAuthorIri, mode } = args;
+
+    const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
+    const yearLit = yearQ ? escapeSparqlStringLiteral(yearQ) : "";
+
+    const titleFilter =
+      titleQ
+        ? (mode === "starts"
+            ? `FILTER(STRSTARTS(LCASE(STR(?name)), LCASE(${titleLit})))`
+            : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(${titleLit})))`)
+        : "";
+
+    const yearFilter = yearQ
+      ? `
+        FILTER(BOUND(?year0))
+        FILTER(STR(?year0) = ${yearLit})
+        `
+      : "";
+
+    const authorIriFilter = directAuthorIri
+      ? `?paper schema:author <${directAuthorIri}> .`
+      : "";
+
+    const authorExists = (() => {
+      if (!authorQ) return "";
+
+      const v = authorQ.trim();
+
+      const iriMatch = v.match(/^(<)?(https?:\/\/\S+?)\1?$/i);
+      if (iriMatch?.[2]) {
+        const authorIri = iriMatch[2].replace(/[)>.,;]+$/, "");
+        return `
+          FILTER EXISTS {
+            ?paper schema:author <${authorIri}> .
+          }
+        `;
+      }
+
+      const authorLit = escapeSparqlStringLiteral(v);
+      return `
+        FILTER EXISTS {
+          ?paper schema:author ?aa .
+          ?aa schema:name ?aaName .
+          FILTER(CONTAINS(LCASE(STR(?aaName)), LCASE(${authorLit})))
+        }
+      `;
+    })();
+
+    return `${PREFIXES}
+    SELECT (COUNT(DISTINCT ?paper) AS ?total)
+    WHERE {
+      FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+
+      ${authorIriFilter}
+
+      ?paper schema:name ?name .
+      ${titleFilter}
+      OPTIONAL { ?paper schema:datePublished ?year0 . }
+      ${yearFilter}
+      ${authorExists}
+    }
     `;
 }
 
@@ -245,33 +319,44 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const raw = (url.searchParams.get("q") ?? url.searchParams.get("title") ?? "").trim();
-        if (!raw) return NextResponse.json({ items: [] });
+        if (!raw) return NextResponse.json({ items: [], total: 0 });
 
         if (raw.length > 300) return NextResponse.json({ error: "Querry too long" }, {status: 400 });
+        const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0") || 0);
+        const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "25") || 25));
 
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|o=${offset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
     
         let rows: any[] = [];
+        let total = 0;
     
         if (parsed.directRisId) {
-            rows = await sparqlSelect(buildDirectQuery(paperIriFromId(parsed.directRisId)));
+            const allRows = await sparqlSelect(buildDirectQuery(paperIriFromId(parsed.directRisId)));
+            total = allRows.length;
+            rows = offset === 0 ? allRows.slice(0, limit) : [];
         } else {
             if (!parsed.titleQ && !parsed.authorQ && !parsed.yearQ && !parsed.directAuthorIri) {
-                return NextResponse.json({ items: [] });
+                return NextResponse.json({ items: [], total: 0 });
             }
 
-            if (parsed.titleQ && parsed.titleQ.length < 3) return NextResponse.json({ items: [] });
+            if (parsed.titleQ && parsed.titleQ.length < 3) return NextResponse.json({ items: [], total: 0 });
 
-            const q1 = buildSearchQuery({ ...parsed, mode: "starts"});
+            let modeUsed: "starts" | "contains" = "starts";
+
+            const q1 = buildSearchQuery({ ...parsed, mode: modeUsed, limit, offset });
             rows = await sparqlSelect(q1);
             if (rows.length === 0 && parsed.titleQ) {
-                rows = await sparqlSelect(buildSearchQuery({ ...parsed, mode: "contains" }));
+                modeUsed = "contains";
+                rows = await sparqlSelect(buildSearchQuery({ ...parsed, mode: modeUsed, limit, offset }));
             }
+
+            const countRows = await sparqlSelect(buildCountQuery({ ...parsed, mode: modeUsed }));
+            total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
     
         const items = rows.map((row) => {
@@ -300,7 +385,7 @@ export async function GET(req: Request) {
         })
         .filter(Boolean);
     
-        const payload = { items };
+        const payload = { items, total };
         cacheSet(cacheKey, payload);
         return NextResponse.json(payload);
     } catch (e: any) {

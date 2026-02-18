@@ -8,11 +8,13 @@ export type SearchItem = {
 
 export type SearchResponse = {
     items: SearchItem[];
+    total?: number;
 }
 
 export type PersonWithAffiliations = {
     iri: string;
     name: string;
+    orcid?: string;
     affiliations: Aff[];
     ccRaw?: string[];
 };

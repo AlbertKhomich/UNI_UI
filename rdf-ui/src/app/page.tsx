@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import type { PaperDetails, SearchItem, Row } from "@/lib/types";
+import type { PaperDetails, SearchItem, SearchResponse, Row } from "@/lib/types";
 import UsersByCountryWidget from "@/components/CountryWidget";
+
+const PAGE_SIZE = 25;
 
 function ccToFlag(cc: string): string {
   const A = 0x1f1e6;
@@ -37,11 +39,62 @@ function ccToColor(rank: number): string {
   return `rgba(255,255,255,${alpha})`
 }
 
+function extractDirectAuthorIri(input: string): string | null {
+  const m = input.match(/^\s*(?:a|author)\s*:\s*(<)?(https?:\/\/\S+?)\1?\s*$/i);
+  if (!m?.[2]) return null;
+  return m[2].trim().replace(/[)>.,;]+$/, "");
+}
+
+function toPossessive(name: string): string {
+  const n = name.trim();
+  if (!n) return "Author's";
+  if (/[sS]$/.test(n)) return `${n}'`;
+  return `${n}'s`;
+}
+
+function stripHtml(input: string): string {
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function toFriendlyHttpError(r: Response, fallback: string): Promise<string> {
+  if (r.status === 504) {
+    return "The search timed out on the server. Please narrow your query and try again.";
+  }
+
+  if (r.status === 502 || r.status === 503) {
+    return "The search service is temporarily unavailable. Please try again in a moment.";
+  }
+
+  const ct = r.headers.get("content-type") ?? "";
+
+  try {
+    if (ct.includes("application/json")) {
+      const j = await r.json();
+      const msg = typeof j?.error === "string" ? j.error : "";
+      if (msg) return msg;
+    } else {
+      const text = await r.text();
+      const clean = stripHtml(text);
+      if (clean) return clean.slice(0, 220);
+    }
+  } catch {
+    // Ignore body parsing failures and use fallback below.
+  }
+
+  return `${fallback} (HTTP ${r.status})`;
+}
+
 export default function HomePage() {
   const [q, setQ] = useState("");
   const dq = useDebounce(q, 400);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [items, setItems] = useState<SearchItem[]>([]);
+  const [searchTotal, setSearchTotal] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
@@ -54,8 +107,46 @@ export default function HomePage() {
   const [countryErr, setCountryErr] = useState<string | null>(null);
 
   const [totalPapers, setTotalPapers] = useState<number>(0);
+  const [knownAuthorNames, setKnownAuthorNames] = useState<Record<string, string>>({});
 
   const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
+  const activeAuthorIri = useMemo(() => extractDirectAuthorIri(q), [q]);
+  const activeAuthorName = useMemo(
+    () => (activeAuthorIri ? knownAuthorNames[activeAuthorIri] ?? "" : ""),
+    [activeAuthorIri, knownAuthorNames]
+  );
+  const headingText = activeAuthorIri && activeAuthorName
+    ? `${toPossessive(activeAuthorName)} Papers | Total: ${searchTotal}`
+    : "Papers";
+
+  function applySearchPrefix(prefix: "a:" | "y:") {
+    const current = q.trimEnd();
+    const separator = current.length > 0 ? " " : "";
+    const next = `${current}${separator}${prefix} `;
+    const cursorPos = next.length;
+    setQ(next);
+
+    requestAnimationFrame(() => {
+      const el = searchInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(cursorPos, cursorPos);
+    });
+  }
+
+  const fetchSearchPage = useCallback(async (offset: number): Promise<SearchResponse> => {
+    const r = await fetch(
+      `/api/search?q=${encodeURIComponent(dq.trim())}&offset=${offset}&limit=${PAGE_SIZE}`
+    );
+    if (!r.ok) throw new Error(await toFriendlyHttpError(r, "Search failed"));
+
+    const ct = r.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) {
+      throw new Error("Search failed: unexpected response format.");
+    }
+
+    return (await r.json()) as SearchResponse;
+  }, [dq]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,27 +204,33 @@ export default function HomePage() {
 
       if (!canSearch) {
         setItems([]);
+        setSearchTotal(0);
+        setNextOffset(0);
+        setHasMore(false);
         setErr(null);
         return;
       }
       setLoading(true);
+      setLoadingMore(false);
       setErr(null);
       try {
-        const r = await fetch(`/api/search?q=${encodeURIComponent(dq.trim())}`);
-        const ct = r.headers.get("content-type") ?? "";
-
-        let j: any = null;
-        if (ct.includes("application/json")) {
-          j = await r.json();
-        } else {
-          const text = await r.text();
-          throw new Error(text || `HTTP ${r.status}`);
+        const j = await fetchSearchPage(0);
+        if (!cancelled) {
+          const nextItems = j.items ?? [];
+          const total = Number(j.total) || nextItems.length;
+          setItems(nextItems);
+          setSearchTotal(total);
+          setNextOffset(nextItems.length);
+          setHasMore(nextItems.length < total);
         }
-
-        if (!r.ok) throw new Error(j?.error ?? "Search failed");
-        if (!cancelled) setItems(j.items ?? []);
       } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? "Error");
+        if (!cancelled) {
+          setErr(e?.message ?? "Error");
+          setItems([]);
+          setSearchTotal(0);
+          setNextOffset(0);
+          setHasMore(false);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -143,7 +240,57 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [dq, canSearch]);
+  }, [canSearch, fetchSearchPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!canSearch || loading || loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
+    try {
+      const j = await fetchSearchPage(nextOffset);
+      const incoming = j.items ?? [];
+      const total = Number(j.total) || searchTotal;
+
+      setItems((prev) => {
+        const seen = new Set(prev.map((x) => x.iri));
+        const merged = [...prev];
+        for (const it of incoming) {
+          if (!seen.has(it.iri)) {
+            merged.push(it);
+            seen.add(it.iri);
+          }
+        }
+        return merged;
+      });
+
+      const loadedCount = nextOffset + incoming.length;
+      setSearchTotal(total);
+      setNextOffset(loadedCount);
+      setHasMore(incoming.length > 0 && loadedCount < total);
+    } catch (e: any) {
+      setErr(e?.message ?? "Error");
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [canSearch, loading, loadingMore, hasMore, fetchSearchPage, nextOffset, searchTotal]);
+
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !canSearch) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { rootMargin: "220px 0px" }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canSearch, loadMore]);
 
   async function ensureDetails(id: string) {
     if (details[id] || detailsLoading[id]) return;
@@ -165,6 +312,19 @@ export default function HomePage() {
 
       if (!r.ok) throw new Error((j as any)?.error ?? "Failed to load paper");
       setDetails((m) => ({ ...m, [id]: j }));
+
+      const authors = Array.isArray(j?.authorsDetailed) ? j.authorsDetailed : [];
+      if (authors.length > 0) {
+        setKnownAuthorNames((m) => {
+          const next = { ...m };
+          for (const a of authors) {
+            const iri = typeof a?.iri === "string" ? a.iri : "";
+            const name = typeof a?.name === "string" ? a.name : "";
+            if (iri && name) next[iri] = name;
+          }
+          return next;
+        });
+      }
     } catch (e: any) {
       setDetailsErr((m) => ({ ...m, [id]: e?.message ?? "Error"}));
     } finally {
@@ -174,14 +334,61 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
-      <h1 className="mb-3 text-[26px] font-semibold">Papers</h1>
+      <a
+        href="http://upbkg.data.dice-research.org/sparql"
+        target="_blank"
+        rel="noreferrer"
+        className="mb-4 inline-block"
+      >
+        <Image
+          src="/sparql-96.png"
+          alt="SPARQL endpoint"
+          width={48}
+          height={48}
+          priority
+        />
+      </a>
+
+      <div className="mb-6">
+        {countryErr ? (
+          <div className="mb-3 text-sm text-red-600">{countryErr}</div>
+        ) : null}
+
+        <UsersByCountryWidget
+          rows={CountryRows}
+          totalOverride={totalPapers}
+        />
+
+        {countryLoading ? (
+          <div className="mt-2 text-xs text-gray-400">Loading countries...</div>
+        ) : null}
+      </div>
+
+      <h1 className="mb-3 text-[26px] font-semibold">{headingText}</h1>
 
       <input 
+        ref={searchInputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search paper title..."
         className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base outline-none focus:border-gray-400"
       />
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          onClick={() => applySearchPrefix("a:")}
+        >
+          author
+        </button>
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          onClick={() => applySearchPrefix("y:")}
+        >
+          year
+        </button>
+      </div>
 
       <div className="mt-3 min-h-6">
         {loading && <span>Searching...</span>}
@@ -303,10 +510,30 @@ export default function HomePage() {
                               <button
                                 type="button"
                                 className="hover:underline"
-                                onClick={() => setQ(`a: ${a.iri}`)}
+                                onClick={() => {
+                                  setKnownAuthorNames((m) => ({ ...m, [a.iri]: a.name }));
+                                  setQ(`a: ${a.iri}`);
+                                }}
                               >
                                 {a.name}
                               </button>
+                              {a.orcid ? (
+                                <a
+                                  href={a.orcid}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-2 inline-flex align-middle"
+                                  aria-label={`${a.name} ORCID`}
+                                  title="ORCID"
+                                >
+                                  <Image
+                                    src="/orcid2.png"
+                                    alt="ORCID"
+                                    width={14}
+                                    height={14}
+                                  />
+                                </a>
+                              ) : null}
                             </div>
                             {a.affiliations.length > 0 && (
                               <div className="text-xs text-gray-400">
@@ -344,18 +571,12 @@ export default function HomePage() {
           );
         })}
       </ul>
-      {countryErr ? (
-        <div className="mb-3 text-sm text-red-600">{countryErr}</div>
+      {canSearch && items.length > 0 ? (
+        <div ref={loadMoreRef} className="mt-3 min-h-6 text-sm text-gray-400">
+          {loadingMore ? "Loading more..." : hasMore ? "Scroll to load more" : "End of results."}
+        </div>
       ) : null}
 
-      <UsersByCountryWidget
-        rows={CountryRows}
-        totalOverride={totalPapers}
-      />
-
-      {countryLoading ? (
-        <div className="mt-2 text-xs text-gray-400">Loading countries...</div>
-      ) : null}
       <div className="mt-18 flex items-center justify-center">
         <Link 
           href="https://dice-research.org/" 

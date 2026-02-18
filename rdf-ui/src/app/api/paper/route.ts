@@ -100,6 +100,7 @@ export async function GET(req: Request) {
         SELECT
         ?a
         (SAMPLE(?aName0) AS ?name)
+        (SAMPLE(STR(?orcid0)) AS ?orcid)
         (GROUP_CONCAT(DISTINCT ?affPair; separator="|") AS ?affs)
         (GROUP_CONCAT(DISTINCT STR(?cc0); separator="|") AS ?countryCodes)
       WHERE {
@@ -107,6 +108,10 @@ export async function GET(req: Request) {
         ?paper schema:author ?a .
 
         OPTIONAL { ?a schema:name ?aName0 . }
+        OPTIONAL {
+          ?a schema:sameAs ?orcid0 .
+          FILTER(CONTAINS(LCASE(STR(?orcid0)), "orcid.org"))
+        }
 
         OPTIONAL {
           ?a schema:affiliation ?aff .
@@ -157,7 +162,9 @@ export async function GET(req: Request) {
             .map((x: string) => x.trim())
             .filter(Boolean);
 
-          return { iri, name, affiliations, ccRaw };
+          const orcid = (r.orcid?.value ?? "").trim() || undefined;
+
+          return { iri, name, orcid, affiliations, ccRaw };
         });
 
         const split = (s: string, sep: string) => (s ? s.split(sep).map((x) => x.trim()).filter(Boolean) : []);
