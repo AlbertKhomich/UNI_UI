@@ -9,9 +9,11 @@ import UsersByCountryWidget from "@/components/CountryWidget";
 const PAGE_SIZE = 25;
 
 function ccToFlag(cc: string): string {
+  const code = (cc || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return "";
   const A = 0x1f1e6;
-  const first = A + (cc.charCodeAt(0) - 65);
-  const second = A + (cc.charCodeAt(1) - 65)
+  const first = A + (code.charCodeAt(0) - 65);
+  const second = A + (code.charCodeAt(1) - 65)
   return String.fromCodePoint(first, second)
 }
 
@@ -25,7 +27,8 @@ function useDebounce<T>(value: T, delayMs = 350) {
 }
 
 function cctoName(cc: string, locale: string = "en"): string {
-  const code = (cc || "")
+  const code = (cc || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return code;
   try {
     const dn = new Intl.DisplayNames([locale], { type: "region" });
     return dn.of(code) || code;
@@ -119,7 +122,7 @@ export default function HomePage() {
     ? `${toPossessive(activeAuthorName)} Papers | Total: ${searchTotal}`
     : "Papers";
 
-  function applySearchPrefix(prefix: "a:" | "y:") {
+  function applySearchPrefix(prefix: "a:" | "y:" | "aff:" | "c:") {
     const current = q.trimEnd();
     const separator = current.length > 0 ? " " : "";
     const next = `${current}${separator}${prefix} `;
@@ -164,12 +167,17 @@ export default function HomePage() {
 
         if (!r.ok) throw new Error(j?.error ?? "Failed to load countries");
         const mapped: Row[] = (j.rows.rows ?? []).map((x: any) => {
-          const cc = String(x.name);
+          const cc = String(x.name ?? "").trim().toUpperCase();
           const papers = Number(x.value) || 0;
 
-          const label = `${ccToFlag(cc)} ${cctoName(cc, "en")}`;
+          const countryName = cctoName(cc, "en");
+          const flag = ccToFlag(cc);
+          const labelWithCode = countryName && countryName !== cc
+            ? `${countryName} (${cc})`
+            : cc;
+          const label = flag ? `${flag} ${labelWithCode}` : labelWithCode;
 
-          return { name: label, value: papers };
+          return { name: label, value: papers, code: cc };
         });
 
         const packed = mapped.map((r, idx) => ({
@@ -357,6 +365,18 @@ export default function HomePage() {
         <UsersByCountryWidget
           rows={CountryRows}
           totalOverride={totalPapers}
+          onCountryClick={(countryCode) => {
+            const code = (countryCode || "").trim().toUpperCase();
+            if (!code) return;
+            const next = `c: ${code}`;
+            setQ(next);
+            requestAnimationFrame(() => {
+              const el = searchInputRef.current;
+              if (!el) return;
+              el.focus();
+              el.setSelectionRange(next.length, next.length);
+            });
+          }}
         />
 
         {countryLoading ? (
@@ -370,7 +390,7 @@ export default function HomePage() {
         ref={searchInputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Search paper title..."
+        placeholder="Search paper title... (a:, y:, aff:, c:)"
         className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base outline-none focus:border-gray-400"
       />
       <div className="mt-2 flex gap-2">
@@ -387,6 +407,20 @@ export default function HomePage() {
           onClick={() => applySearchPrefix("y:")}
         >
           year
+        </button>
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          onClick={() => applySearchPrefix("aff:")}
+        >
+          affiliation
+        </button>
+        <button
+          type="button"
+          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          onClick={() => applySearchPrefix("c:")}
+        >
+          country
         </button>
       </div>
 

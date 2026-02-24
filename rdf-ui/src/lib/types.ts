@@ -49,4 +49,4 @@ export type PaperDetails = {
     pageEnd?: string | null;
 }
 
-export type Row = { name: string; value: number; color?: string };
+export type Row = { name: string; value: number; color?: string; code?: string };

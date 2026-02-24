@@ -23,9 +23,11 @@ function darkenColorSlightly(input: string): string {
 export default function UsersByCountryWidget({
     rows,
     totalOverride,
+    onCountryClick,
 }: {
     rows: Row[];
     totalOverride: number;
+    onCountryClick?: (countryCode: string, label: string) => void;
 }) {
     const [showAll, setShowAll] = React.useState(false);
 
@@ -139,11 +141,22 @@ export default function UsersByCountryWidget({
                             : idx >= 3
                                 ? fourthBarColor
                                 : (r as any).color ?? "rgba(255,255,255,0.6)";
+                        const canClickCountry = Boolean(onCountryClick && r.code);
                         return (
-                            <div key={r.name} className="space-y-2">
+                            <div key={r.code ? `${r.code}-${idx}` : `${r.name}-${idx}`} className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
-                                        <div className="text-base font-medium text-white/80">{r.name}</div>
+                                        {canClickCountry ? (
+                                            <button
+                                                type="button"
+                                                className="text-base font-medium text-white/80 hover:underline"
+                                                onClick={() => onCountryClick?.(String(r.code), r.name)}
+                                            >
+                                                {r.name}
+                                            </button>
+                                        ) : (
+                                            <div className="text-base font-medium text-white/80">{r.name}</div>
+                                        )}
                                     </div>
                                     <div className="text-base font-medium text-white/55">
                                         {formatCompact(r.value)} ({pct.toFixed(1)}%)
