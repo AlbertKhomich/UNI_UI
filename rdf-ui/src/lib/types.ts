@@ -16,12 +16,12 @@ export type PersonWithAffiliations = {
     name: string;
     orcid?: string;
     affiliations: Aff[];
-    ccRaw?: string[];
 };
 
 export type Aff = {
     name: string; 
-    iri: string
+    iri: string;
+    countryRaw?: string;
 };
 
 export type PaperDetails = {

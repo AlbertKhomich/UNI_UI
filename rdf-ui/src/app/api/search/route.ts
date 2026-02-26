@@ -138,6 +138,34 @@ function buildCountryIndex(): CountryIndexEntry[] {
 
 const COUNTRY_INDEX = buildCountryIndex();
 
+const COUNTRY_VARIANTS_BY_CODE: Map<string, string[]> = (() => {
+  const byCode = new Map<string, Set<string>>();
+
+  const addVariant = (code: string, variant: string) => {
+    const c = (code ?? "").trim().toUpperCase();
+    const v = normalizeCountryLookup(variant);
+    if (!c || !v) return;
+    if (!byCode.has(c)) byCode.set(c, new Set<string>());
+    byCode.get(c)?.add(v);
+  };
+
+  for (const entry of COUNTRY_INDEX) {
+    addVariant(entry.code, entry.normalizedName);
+  }
+
+  for (const [alias, codes] of Object.entries(COUNTRY_ALIASES)) {
+    for (const code of codes) addVariant(code, alias);
+  }
+
+  for (const [code] of byCode) addVariant(code, code);
+
+  const out = new Map<string, string[]>();
+  for (const [code, variants] of byCode) {
+    out.set(code, Array.from(variants));
+  }
+  return out;
+})();
+
 function resolveCountryCodes(raw: string): string[] {
   const value = (raw ?? "").trim();
   if (!value) return [];
@@ -393,23 +421,59 @@ function buildCountryExists(countryQ: string, countryCodes: string[]): string {
     const codeList = countryCodes
       .map((code) => escapeSparqlStringLiteral(code.toUpperCase()))
       .join(", ");
+
+    const normalizedVariants = new Set<string>();
+    for (const code of countryCodes.map((x) => x.toUpperCase())) {
+      normalizedVariants.add(normalizeCountryLookup(code));
+      const variants = COUNTRY_VARIANTS_BY_CODE.get(code) ?? [];
+      for (const variant of variants) normalizedVariants.add(variant);
+    }
+    const normalizedCountryQ = normalizeCountryLookup(countryQ);
+    if (normalizedCountryQ) normalizedVariants.add(normalizedCountryQ);
+
+    const variantList = Array.from(normalizedVariants)
+      .filter(Boolean)
+      .map((variant) => escapeSparqlStringLiteral(variant))
+      .join(", ");
+
     return `
       FILTER EXISTS {
         ?paper schema:author ?aa .
         ?aa schema:affiliation ?aff .
         ?aff schema:addressCountry ?cc0 .
-        FILTER(UCASE(STR(?cc0)) IN (${codeList}))
+        BIND(
+          REPLACE(
+            REPLACE(LCASE(STR(?cc0)), "[^a-z0-9]+", " "),
+            "^ +| +$",
+            ""
+          ) AS ?ccNorm
+        )
+        FILTER(
+          UCASE(STR(?cc0)) IN (${codeList})
+          || ?ccNorm IN (${variantList})
+        )
       }
     `;
   }
 
   const countryLit = escapeSparqlStringLiteral(countryQ.trim());
+  const normalizedLit = escapeSparqlStringLiteral(normalizeCountryLookup(countryQ));
   return `
     FILTER EXISTS {
       ?paper schema:author ?aa .
       ?aa schema:affiliation ?aff .
       ?aff schema:addressCountry ?cc0 .
-      FILTER(CONTAINS(LCASE(STR(?cc0)), LCASE(${countryLit})))
+      BIND(
+        REPLACE(
+          REPLACE(LCASE(STR(?cc0)), "[^a-z0-9]+", " "),
+          "^ +| +$",
+          ""
+        ) AS ?ccNorm
+      )
+      FILTER(
+        CONTAINS(LCASE(STR(?cc0)), LCASE(${countryLit}))
+        || CONTAINS(?ccNorm, ${normalizedLit})
+      )
     }
   `;
 }

@@ -101,8 +101,9 @@ export async function GET(req: Request) {
         ?a
         (SAMPLE(?aName0) AS ?name)
         (SAMPLE(STR(?orcid0)) AS ?orcid)
-        (GROUP_CONCAT(DISTINCT ?affPair; separator="|") AS ?affs)
-        (GROUP_CONCAT(DISTINCT STR(?cc0); separator="|") AS ?countryCodes)
+        ?aff
+        (SAMPLE(?affLabel0) AS ?affLabel)
+        (MIN(STR(?cc0)) AS ?countryRaw)
       WHERE {
         BIND(<${paperIri}> AS ?paper)
         ?paper schema:author ?a .
@@ -117,19 +118,12 @@ export async function GET(req: Request) {
           ?a schema:affiliation ?aff .
 
           OPTIONAL { ?aff schema:name ?affName . }
-          BIND(COALESCE(STR(?affName), STR(?aff)) AS ?affLabel)
-
-          # make a stable "pair": label + iri
-          BIND(CONCAT(?affLabel, "|||", STR(?aff)) AS ?affPair)
-        }
-
-        OPTIONAL {
-          ?a schema:affiliation ?aff2 .
-          ?aff2 schema:addressCountry ?cc0 .
+          BIND(COALESCE(STR(?affName), STR(?aff)) AS ?affLabel0)
+          OPTIONAL { ?aff schema:addressCountry ?cc0 . }
         }
       }
-      GROUP BY ?a
-      ORDER BY LCASE(STR(?name))
+      GROUP BY ?a ?aff
+      ORDER BY LCASE(STR(?name)) STR(?aff)
         `;
 
         const rows = await sparqlSelect(query);
@@ -139,33 +133,53 @@ export async function GET(req: Request) {
 
         const authorRows = (await sparqlSelect(authorQuery)) as SparqlRow[];
 
-        const authorsDetailed = authorRows.map((r) => {
-          const iri = r.a?.value ?? "";
-          const name = toDisplayName((r.name?.value ?? iri).trim());
+        const byAuthor = new Map<string, {
+          iri: string;
+          name: string;
+          orcid?: string;
+          affiliations: Aff[];
+        }>();
 
-          const affsRaw = (r.affs?.value ?? "")
-            .split("|")
-            .map((x: string) => x.trim())
-            .filter(Boolean);
+        for (const r of authorRows) {
+          const authorIri = (r.a?.value ?? "").trim();
+          if (!authorIri) continue;
 
-          const affiliations: Aff[] = []
-          for (let i = 0; i + 1 < affsRaw.length; i += 2) {
-            const name = affsRaw[i];
-            const iri = affsRaw[i + 1];
-
-            if (!name || !iri) continue;
-            affiliations.push({ name, iri})
-          }
-
-          const ccRaw = (r.countryCodes?.value ?? "")
-            .split("|")
-            .map((x: string) => x.trim())
-            .filter(Boolean);
-
+          const authorName = toDisplayName((r.name?.value ?? authorIri).trim());
           const orcid = (r.orcid?.value ?? "").trim() || undefined;
 
-          return { iri, name, orcid, affiliations, ccRaw };
-        });
+          if (!byAuthor.has(authorIri)) {
+            byAuthor.set(authorIri, {
+              iri: authorIri,
+              name: authorName,
+              orcid,
+              affiliations: [],
+            });
+          }
+
+          const author = byAuthor.get(authorIri);
+          if (!author) continue;
+
+          if (!author.orcid && orcid) author.orcid = orcid;
+
+          const affIri = (r.aff?.value ?? "").trim();
+          if (!affIri) continue;
+
+          const affName = (r.affLabel?.value ?? affIri).trim();
+          const countryRaw = (r.countryRaw?.value ?? "").trim() || undefined;
+
+          const existingAff = author.affiliations.find((x) => x.iri === affIri);
+          if (!existingAff) {
+            author.affiliations.push({
+              name: affName,
+              iri: affIri,
+              countryRaw,
+            });
+          } else if (!existingAff.countryRaw && countryRaw) {
+            existingAff.countryRaw = countryRaw;
+          }
+        }
+
+        const authorsDetailed = Array.from(byAuthor.values());
 
         const split = (s: string, sep: string) => (s ? s.split(sep).map((x) => x.trim()).filter(Boolean) : []);
         const splitPipe = (s: string) => split(s, "|");
