@@ -47,6 +47,8 @@ export async function GET(req: Request) {
           (SAMPLE(?year0) AS ?year)
           (SAMPLE(?abs) AS ?abstract)
           (GROUP_CONCAT(DISTINCT ?kw; separator="; ") AS ?keywords)
+          (GROUP_CONCAT(DISTINCT ?fieldName0; separator="|") AS ?fields)
+          (GROUP_CONCAT(DISTINCT ?subfieldName0; separator="|") AS ?subfields)
           (GROUP_CONCAT(DISTINCT STR(?ident0); separator="|") AS ?identifiers)
           (GROUP_CONCAT(DISTINCT STR(?url0); separator="|") AS ?urls)
           (GROUP_CONCAT(DISTINCT STR(?partOf); separator="|") AS ?isPartOf)
@@ -69,6 +71,18 @@ export async function GET(req: Request) {
           OPTIONAL { ?paper schema:datePublished ?year0 . }
           OPTIONAL { ?paper schema:abstract ?abs . }
           OPTIONAL { ?paper schema:keywords ?kw . }
+          OPTIONAL {
+            ?paper schema:about ?aboutField .
+            FILTER(CONTAINS(STR(?aboutField), "openalex.org/fields/"))
+            OPTIONAL { ?aboutField schema:name ?aboutFieldName . }
+            BIND(COALESCE(STR(?aboutFieldName), STR(?aboutField)) AS ?fieldName0)
+          }
+          OPTIONAL {
+            ?paper schema:about ?aboutSubfield .
+            FILTER(CONTAINS(STR(?aboutSubfield), "openalex.org/subfields/"))
+            OPTIONAL { ?aboutSubfield schema:name ?aboutSubfieldName . }
+            BIND(COALESCE(STR(?aboutSubfieldName), STR(?aboutSubfield)) AS ?subfieldName0)
+          }
           OPTIONAL { ?paper schema:identifier ?ident0 . }
           OPTIONAL { ?paper schema:url ?url0 . }
 
@@ -103,6 +117,7 @@ export async function GET(req: Request) {
         (SAMPLE(STR(?orcid0)) AS ?orcid)
         ?aff
         (SAMPLE(?affLabel0) AS ?affLabel)
+        (MIN(STR(?affRor0)) AS ?affRor)
         (MIN(STR(?cc0)) AS ?countryRaw)
       WHERE {
         BIND(<${paperIri}> AS ?paper)
@@ -119,6 +134,10 @@ export async function GET(req: Request) {
 
           OPTIONAL { ?aff schema:name ?affName . }
           BIND(COALESCE(STR(?affName), STR(?aff)) AS ?affLabel0)
+          OPTIONAL {
+            ?aff schema:sameAs ?affRor0 .
+            FILTER(CONTAINS(LCASE(STR(?affRor0)), "ror.org"))
+          }
           OPTIONAL { ?aff schema:addressCountry ?cc0 . }
         }
       }
@@ -165,6 +184,7 @@ export async function GET(req: Request) {
           if (!affIri) continue;
 
           const affName = (r.affLabel?.value ?? affIri).trim();
+          const affRor = (r.affRor?.value ?? "").trim() || undefined;
           const countryRaw = (r.countryRaw?.value ?? "").trim() || undefined;
 
           const existingAff = author.affiliations.find((x) => x.iri === affIri);
@@ -172,10 +192,16 @@ export async function GET(req: Request) {
             author.affiliations.push({
               name: affName,
               iri: affIri,
+              sameAs: affRor,
               countryRaw,
             });
-          } else if (!existingAff.countryRaw && countryRaw) {
-            existingAff.countryRaw = countryRaw;
+          } else {
+            if (!existingAff.countryRaw && countryRaw) {
+              existingAff.countryRaw = countryRaw;
+            }
+            if (!existingAff.sameAs && affRor) {
+              existingAff.sameAs = affRor;
+            }
           }
         }
 
@@ -205,6 +231,8 @@ export async function GET(req: Request) {
             year: row.year?.value ?? null,
             abstract: row.abstract?.value ?? null,
             keywords: splitSemi(row.keywords?.value ?? ""),
+            fields: splitPipe(row.fields?.value ?? ""),
+            subfields: splitPipe(row.subfields?.value ?? ""),
             sameAs: doiUrl,
             urls: splitPipe(row.urls?.value ?? ""),
             isPartOf: splitPipe(row.isPartOf?.value ?? ""),

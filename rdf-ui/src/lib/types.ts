@@ -22,6 +22,7 @@ export type Aff = {
     name: string; 
     iri: string;
     countryRaw?: string;
+    sameAs?: string;
 };
 
 export type PaperDetails = {
@@ -39,6 +40,8 @@ export type PaperDetails = {
     authorsDetailed?: PersonWithAffiliations[];
 
     keywords?: string[];
+    fields?: string[];
+    subfields?: string[];
     sameAs?: string;
     urls?: string[];
     isPartOfNames?: string[];

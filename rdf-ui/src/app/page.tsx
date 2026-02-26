@@ -500,6 +500,8 @@ export default function HomePage() {
           const isOpen = openIds.has(it.id);
           const d = details[it.id];
           const keywords = d?.keywords ?? [];
+          const fields = d?.fields ?? [];
+          const subfields = d?.subfields ?? [];
           const loadingD = !!detailsLoading[it.id];
           const errD = detailsErr[it.id];
           const whereParts: string[] = [];
@@ -578,6 +580,18 @@ export default function HomePage() {
                         {keywords.slice(0, 12).join(", ")}
                       </div>
                     )}
+                    {fields.length > 0 && (
+                      <div>
+                        <span className="font-medium">Fields:</span>{" "}
+                        {fields.slice(0, 12).join(", ")}
+                      </div>
+                    )}
+                    {subfields.length > 0 && (
+                      <div>
+                        <span className="font-medium">Subfields:</span>{" "}
+                        {subfields.slice(0, 12).join(", ")}
+                      </div>
+                    )}
 
                     {d.abstract && (
                       <div className="text-gray-400">
@@ -643,15 +657,23 @@ export default function HomePage() {
                                   const countryTitle = ccCode
                                     ? `${cctoName(ccCode, "en")} (${ccCode})`
                                     : ccRaw;
+                                  const affHref = (aff.sameAs ?? "").toLowerCase().includes("ror.org")
+                                    ? aff.sameAs
+                                    : undefined;
                                   return (
                                     <span key={`${a.iri}-aff-${i}`}>
                                       <span title={aff.name}>
-                                      <a
-                                      href={aff.iri}
-                                      target="_blank"
-                                      rel="noopener noreferrer"                                      
-                                      >  {aff.name} 
-                                      </a>  
+                                        {affHref ? (
+                                          <a
+                                            href={affHref}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                          >
+                                            {aff.name}
+                                          </a>
+                                        ) : (
+                                          <span>{aff.name}</span>
+                                        )}
                                       </span>
                                       {countryTitle ? (
                                         <span className="ml-1" title={countryTitle}>
