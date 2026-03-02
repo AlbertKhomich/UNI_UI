@@ -6,9 +6,16 @@
   --foreground: #171717;
 }
 
+html.light {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+}
+
 html.dark {
   --background: #0a0a0a;
   --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -19,7 +26,7 @@ html.dark {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  html:not(.light):not(.dark) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }

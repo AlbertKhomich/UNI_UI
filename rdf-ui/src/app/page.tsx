@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { FiMoon, FiSun } from "react-icons/fi";
 import type { PaperDetails, SearchItem, SearchResponse, Row } from "@/lib/types";
 import UsersByCountryWidget from "@/components/CountryWidget";
 
 const PAGE_SIZE = 25;
+const THEME_STORAGE_KEY = "rdf-ui-theme";
+type Theme = "dark" | "light";
 
 function ccToFlag(cc: string): string {
   const code = (cc || "").trim().toUpperCase();
@@ -102,9 +105,10 @@ function toCountryCode(input: string): string {
   return COUNTRY_NAME_TO_CODE.get(normalized) ?? "";
 }
 
-function ccToColor(rank: number): string {
-  const alpha = Math.max(0.2, 1 - rank * 0.2);
-  return `rgba(255,255,255,${alpha})`
+function ccToColor(rank: number, theme: Theme): string {
+  const alpha = Math.max(0.25, 1 - rank * 0.18);
+  if (theme === "dark") return `rgba(255,255,255,${alpha})`;
+  return `rgba(30,64,175,${Math.min(0.88, alpha)})`;
 }
 
 function extractDirectAuthorIri(input: string): string | null {
@@ -170,12 +174,15 @@ export default function HomePage() {
   const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
   const [detailsErr, setDetailsErr] = useState<Record<string, string>>({});
 
-  const [CountryRows, setCountryRows] = useState<Row[]>([]);
+  const [countryRows, setCountryRows] = useState<Row[]>([]);
   const [countryLoading, setCountryLoading] = useState(false);
   const [countryErr, setCountryErr] = useState<string | null>(null);
 
   const [totalPapers, setTotalPapers] = useState<number>(0);
   const [knownAuthorNames, setKnownAuthorNames] = useState<Record<string, string>>({});
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [themeReady, setThemeReady] = useState(false);
+  const isDark = theme === "dark";
 
   const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
   const activeAuthorIri = useMemo(() => extractDirectAuthorIri(q), [q]);
@@ -186,6 +193,39 @@ export default function HomePage() {
   const headingText = activeAuthorIri && activeAuthorName
     ? `${toPossessive(activeAuthorName)} Papers | Total: ${searchTotal}`
     : "Papers";
+  const subtleTextClass = isDark ? "text-gray-400" : "text-gray-500";
+  const searchInputClass = isDark
+    ? "w-full rounded-xl border border-gray-500 bg-transparent px-3 py-3 text-base outline-none focus:border-gray-300"
+    : "w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base outline-none focus:border-gray-500";
+  const prefixButtonClass = isDark
+    ? "rounded-xl border border-gray-500 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-800"
+    : "rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-100";
+  const detailsClass = isDark
+    ? "mt-3 border-t border-gray-600 pt-3 text-sm text-gray-300"
+    : "mt-3 border-t border-gray-200 pt-3 text-sm text-gray-700";
+  const countryRowsWithColors = useMemo(
+    () => countryRows.map((row, idx) => ({ ...row, color: ccToColor(idx, theme) })),
+    [countryRows, theme]
+  );
+
+  useEffect(() => {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedTheme === "light" || storedTheme === "dark") {
+      setTheme(storedTheme);
+      setThemeReady(true);
+      return;
+    }
+    setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeReady) return;
+    const root = document.documentElement;
+    root.classList.remove("dark", "light");
+    root.classList.add(theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme, themeReady]);
 
   function applySearchPrefix(prefix: "a:" | "y:" | "aff:" | "c:") {
     const current = q.trimEnd();
@@ -245,13 +285,8 @@ export default function HomePage() {
           return { name: label, value: papers, code: cc };
         });
 
-        const packed = mapped.map((r, idx) => ({
-          ...r,
-          color: ccToColor(idx),
-        }));
-
         if (!cancelled) {
-          setCountryRows(packed);
+          setCountryRows(mapped);
           setTotalPapers(Number(j.rows.totalPapers) || 0);
         };
       } catch (e: any) {
@@ -407,20 +442,35 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
-      <a
-        href="http://upbkg.data.dice-research.org/sparql"
-        target="_blank"
-        rel="noreferrer"
-        className="mb-4 inline-block"
-      >
-        <Image
-          src="/sparql-96.png"
-          alt="SPARQL endpoint"
-          width={48}
-          height={48}
-          priority
-        />
-      </a>
+      <div className="mb-4 flex items-start justify-between">
+        <a
+          href="http://upbkg.data.dice-research.org/sparql"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block"
+        >
+          <Image
+            src="/sparql-96.png"
+            alt="SPARQL endpoint"
+            width={48}
+            height={48}
+            priority
+          />
+        </a>
+        <button
+          type="button"
+          aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+          title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+          className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors ${
+            isDark
+              ? "border-gray-500 text-gray-100 hover:bg-gray-800"
+              : "border-gray-300 text-gray-700 hover:bg-gray-100"
+          }`}
+          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+        >
+          {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
+        </button>
+      </div>
 
       <div className="mb-6">
         {countryErr ? (
@@ -428,7 +478,8 @@ export default function HomePage() {
         ) : null}
 
         <UsersByCountryWidget
-          rows={CountryRows}
+          rows={countryRowsWithColors}
+          theme={theme}
           totalOverride={totalPapers}
           onCountryClick={(countryCode) => {
             const code = (countryCode || "").trim().toUpperCase();
@@ -445,7 +496,7 @@ export default function HomePage() {
         />
 
         {countryLoading ? (
-          <div className="mt-2 text-xs text-gray-400">Loading countries...</div>
+          <div className={`mt-2 text-xs ${subtleTextClass}`}>Loading countries...</div>
         ) : null}
       </div>
 
@@ -456,33 +507,33 @@ export default function HomePage() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search paper title... (a:, y:, aff:, c:)"
-        className="w-full rounded-xl border border-gray-300 px-3 py-3 text-base outline-none focus:border-gray-400"
+        className={searchInputClass}
       />
       <div className="mt-2 flex gap-2">
         <button
           type="button"
-          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          className={prefixButtonClass}
           onClick={() => applySearchPrefix("a:")}
         >
           author
         </button>
         <button
           type="button"
-          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          className={prefixButtonClass}
           onClick={() => applySearchPrefix("y:")}
         >
           year
         </button>
         <button
           type="button"
-          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          className={prefixButtonClass}
           onClick={() => applySearchPrefix("aff:")}
         >
           affiliation
         </button>
         <button
           type="button"
-          className="rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-900"
+          className={prefixButtonClass}
           onClick={() => applySearchPrefix("c:")}
         >
           country
@@ -520,7 +571,9 @@ export default function HomePage() {
           <li 
             key={it.iri} 
             className={`rounded-xl border p-4 transition ${
-              isOpen ? "border-gray-400" : "border-gray-200"
+              isDark
+                ? isOpen ? "border-gray-500" : "border-gray-700"
+                : isOpen ? "border-gray-400" : "border-gray-200"
             }`}
           >
             <button
@@ -542,7 +595,7 @@ export default function HomePage() {
               <div className="text-[17px] font-semibold">
                 {it.title || it.id}
               </div>
-              <div className="mt-1.5 text-sm text-gray-300">
+              <div className={isDark ? "mt-1.5 text-sm text-gray-300" : "mt-1.5 text-sm text-gray-600"}>
                 <span>{it.year ?? "—"}</span>
                 <span className="mx-2">·</span>
                 <span>{it.authorsText || "Authors: —"}</span>
@@ -550,7 +603,7 @@ export default function HomePage() {
             </button>
             
             {isOpen && (
-              <div className="mt-3 border-t border-gray-200 pt-3 text-sm text-gray-300">
+              <div className={detailsClass}>
                 {loadingD && <div>Loading details...</div>}
                 {errD && <div className="text-red-600">{errD}</div>}
 
@@ -594,9 +647,9 @@ export default function HomePage() {
                     )}
 
                     {d.abstract && (
-                      <div className="text-gray-400">
+                      <div className={isDark ? "text-gray-400" : "text-gray-600"}>
                         <span className="font-medium">Abstract:</span>{" "}
-                        <span className="block mt-1 text-gray-200 line-clamp-4">
+                        <span className={isDark ? "mt-1 block line-clamp-4 text-gray-200" : "mt-1 block line-clamp-4 text-gray-700"}>
                           {d.abstract}
                         </span>
                       </div>
@@ -619,7 +672,7 @@ export default function HomePage() {
                       <ul className="mt-1 space-y-1">
                         {d.authorsDetailed?.map((a) => (
                           <li key={a.iri}>
-                            <div className="text-gray-200">                              
+                            <div className={isDark ? "text-gray-200" : "text-gray-800"}>
                               <button
                                 type="button"
                                 className="hover:underline"
@@ -649,7 +702,7 @@ export default function HomePage() {
                               ) : null}
                             </div>
                             {a.affiliations.length > 0 && (
-                              <div className="text-xs text-gray-400">
+                              <div className={isDark ? "text-xs text-gray-400" : "text-xs text-gray-500"}>
                                 {a.affiliations.map((aff, i) => {
                                   const ccRaw = (aff.countryRaw ?? "").trim();
                                   const ccCode = toCountryCode(ccRaw);
@@ -698,7 +751,7 @@ export default function HomePage() {
         })}
       </ul>
       {canSearch && items.length > 0 ? (
-        <div ref={loadMoreRef} className="mt-3 min-h-6 text-sm text-gray-400">
+        <div ref={loadMoreRef} className={`mt-3 min-h-6 text-sm ${subtleTextClass}`}>
           {loadingMore ? "Loading more..." : hasMore ? "Scroll to load more" : "End of results."}
         </div>
       ) : null}
