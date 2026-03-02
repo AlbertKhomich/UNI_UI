@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { FiMoon, FiSun } from "react-icons/fi";
@@ -440,6 +440,31 @@ export default function HomePage() {
     }
   }
 
+  function togglePaperOpen(id: string) {
+    const willOpen = !openIds.has(id);
+
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+    if (willOpen) {
+      void ensureDetails(id);
+    }
+  }
+
+  function shouldSkipRowToggle(event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>): boolean {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("a,button,input,textarea,select,label,[contenteditable='true']")) {
+      return true;
+    }
+
+    const selection = window.getSelection();
+    return Boolean(selection && !selection.isCollapsed && selection.toString().trim().length > 0);
+  }
+
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <div className="mb-4 flex items-start justify-between">
@@ -576,31 +601,43 @@ export default function HomePage() {
                 : isOpen ? "border-gray-400" : "border-gray-200"
             }`}
           >
-            <button
-              type="button"
-              className="text-left w-full"
-              onClick={() => {
-                const willOpen = !openIds.has(it.id);
-
-                setOpenIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(it.id)) next.delete(it.id);
-                  else next.add(it.id);                  
-                  return next;
-                });
-
-                if (willOpen) ensureDetails(it.id);
+            <div
+              className="flex cursor-pointer items-start justify-between gap-3"
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onClick={(event) => {
+                if (shouldSkipRowToggle(event)) return;
+                togglePaperOpen(it.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                if (shouldSkipRowToggle(event)) return;
+                togglePaperOpen(it.id);
               }}
             >
-              <div className="text-[17px] font-semibold">
+              <div className="min-w-0 flex-1 select-text">
+                <div className="break-words text-[17px] font-semibold">
                 {it.title || it.id}
+                </div>
+                <div className={isDark ? "mt-1.5 text-sm text-gray-300" : "mt-1.5 text-sm text-gray-600"}>
+                  <span>{it.year ?? "—"}</span>
+                  <span className="mx-2">·</span>
+                  <span>{it.authorsText || "Authors: —"}</span>
+                </div>
               </div>
-              <div className={isDark ? "mt-1.5 text-sm text-gray-300" : "mt-1.5 text-sm text-gray-600"}>
-                <span>{it.year ?? "—"}</span>
-                <span className="mx-2">·</span>
-                <span>{it.authorsText || "Authors: —"}</span>
-              </div>
-            </button>
+              <span
+                className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  isDark
+                    ? "border-gray-500 text-gray-100 hover:bg-gray-800"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                }`}
+                aria-hidden="true"
+              >
+                {isOpen ? "Hide" : "Details"}
+              </span>
+            </div>
             
             {isOpen && (
               <div className={detailsClass}>
