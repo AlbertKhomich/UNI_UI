@@ -3,6 +3,7 @@
 import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { FaFilePdf, FaGithub } from "react-icons/fa";
 import { FiMoon, FiSun } from "react-icons/fi";
 import type { PaperDetails, SearchItem, SearchResponse, Row } from "@/lib/types";
 import UsersByCountryWidget from "@/components/CountryWidget";
@@ -65,6 +66,16 @@ const COUNTRY_ALIASES: Record<string, string> = {
   "ivory coast": "CI",
 };
 
+const COUNTRY_CODE_ALIASES: Record<string, string> = {
+  FX: "FR",
+};
+
+function canonicalizeCountryCode(input: string): string {
+  const code = (input || "").trim().toUpperCase();
+  if (!code) return "";
+  return COUNTRY_CODE_ALIASES[code] ?? code;
+}
+
 const COUNTRY_NAME_TO_CODE: Map<string, string> = (() => {
   const out = new Map<string, string>();
   let displayNames: Intl.DisplayNames | null = null;
@@ -91,18 +102,19 @@ function toCountryCode(input: string): string {
   if (!value) return "";
 
   const directCode = value.toUpperCase().match(/\b[A-Z]{2}\b/);
-  if (directCode?.[0]) return directCode[0];
+  if (directCode?.[0]) return canonicalizeCountryCode(directCode[0]);
 
   const compact = value.toUpperCase().replace(/[^A-Z]/g, "");
-  if (/^[A-Z]{2}$/.test(compact)) return compact;
+  if (/^[A-Z]{2}$/.test(compact)) return canonicalizeCountryCode(compact);
 
   const normalized = normalizeCountryLookup(value);
   if (!normalized) return "";
 
   const aliased = COUNTRY_ALIASES[normalized];
-  if (aliased) return aliased;
+  if (aliased) return canonicalizeCountryCode(aliased);
 
-  return COUNTRY_NAME_TO_CODE.get(normalized) ?? "";
+  const fromName = COUNTRY_NAME_TO_CODE.get(normalized);
+  return fromName ? canonicalizeCountryCode(fromName) : "";
 }
 
 function ccToColor(rank: number, theme: Theme): string {
@@ -126,6 +138,20 @@ function toPossessive(name: string): string {
 
 function stripHtml(input: string): string {
   return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function parseUrl(input: string): URL | null {
+  try {
+    return new URL(input);
+  } catch {
+    return null;
+  }
+}
+
+function isGithubUrl(input: string): boolean {
+  const parsed = parseUrl(input);
+  if (!parsed) return false;
+  return parsed.hostname.toLowerCase() === "github.com" || parsed.hostname.toLowerCase().endsWith(".github.com");
 }
 
 async function toFriendlyHttpError(r: Response, fallback: string): Promise<string> {
@@ -271,19 +297,22 @@ export default function HomePage() {
         else throw new Error((await r.text()) || `HTTP ${r.status}`);
 
         if (!r.ok) throw new Error(j?.error ?? "Failed to load countries");
-        const mapped: Row[] = (j.rows.rows ?? []).map((x: any) => {
-          const cc = String(x.name ?? "").trim().toUpperCase();
-          const papers = Number(x.value) || 0;
+        const mappedRaw: Array<Row | null> = (j.rows.rows ?? [])
+          .map((x: any) => {
+            const cc = String(x.name ?? "").trim().toUpperCase();
+            if (!/^[A-Z]{2}$/.test(cc)) return null;
 
-          const countryName = cctoName(cc, "en");
-          const flag = ccToFlag(cc);
-          const labelWithCode = countryName && countryName !== cc
-            ? `${countryName} (${cc})`
-            : cc;
-          const label = flag ? `${flag} ${labelWithCode}` : labelWithCode;
+            const papers = Number(x.value) || 0;
+            const countryName = cctoName(cc, "en");
+            const flag = ccToFlag(cc);
+            const labelWithCode = countryName && countryName !== cc
+              ? `${countryName} (${cc})`
+              : cc;
+            const label = flag ? `${flag} ${labelWithCode}` : labelWithCode;
 
-          return { name: label, value: papers, code: cc };
-        });
+            return { name: label, value: papers, code: cc };
+          });
+        const mapped: Row[] = mappedRaw.filter((row): row is Row => row !== null);
 
         if (!cancelled) {
           setCountryRows(mapped);
@@ -589,6 +618,22 @@ export default function HomePage() {
             : d?.pageStart ? `p. ${d.pageStart}`
             : d?.pageEnd ? `p. ${d.pageEnd}`
             : null;
+          const pdfUrls = Array.from(
+            new Set(
+              (d?.urls ?? [])
+                .map((url) => url.trim())
+                .filter(Boolean)
+            )
+          );
+          const repositoryUrls = Array.from(
+            new Set(
+              (d?.codeRepositories ?? [])
+                .map((url) => url.trim())
+                .filter(Boolean)
+            )
+          );
+          const githubUrls = repositoryUrls.filter(isGithubUrl);
+          const otherRepositoryUrls = repositoryUrls.filter((url) => !isGithubUrl(url));
 
           if (pages) whereParts.push(pages);
 
@@ -692,17 +737,51 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-3 pt-1">
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
                       {d.sameAs && (
                         <a className="underline" href={d.sameAs} target="_blank" rel="noreferrer">
-                          DOI / sameAs
+                          DOI
                         </a>
                       )}
-                      {d.urls?.[0] && (
-                        <a className="underline" href={d.urls[0]} target="_blank" rel="noreferrer">
-                          URL
+                      {githubUrls.map((githubUrl) => (
+                        <a
+                          key={githubUrl}
+                          className="inline-flex items-center gap-1.5 underline"
+                          href={githubUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="GitHub repository"
+                          title="GitHub repository"
+                        >
+                          <FaGithub />
+                          <span>GitHub</span>
                         </a>
-                      )}
+                      ))}
+                      {otherRepositoryUrls.map((repoUrl, idx) => (
+                        <a
+                          key={repoUrl}
+                          className="underline"
+                          href={repoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {otherRepositoryUrls.length > 1 ? `Repository ${idx + 1}` : "Repository"}
+                        </a>
+                      ))}
+                      {pdfUrls.map((pdfUrl, idx) => (
+                        <a
+                          key={pdfUrl}
+                          className="inline-flex items-center gap-1.5 underline"
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="PDF file"
+                          title="PDF file"
+                        >
+                          <FaFilePdf />
+                          <span>{pdfUrls.length > 1 ? `PDF ${idx + 1}` : "PDF"}</span>
+                        </a>
+                      ))}
                     </div>
                     <div>
                       <span className="font-medium">Authors:</span>

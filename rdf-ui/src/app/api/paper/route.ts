@@ -51,6 +51,7 @@ export async function GET(req: Request) {
           (GROUP_CONCAT(DISTINCT ?subfieldName0; separator="|") AS ?subfields)
           (GROUP_CONCAT(DISTINCT STR(?ident0); separator="|") AS ?identifiers)
           (GROUP_CONCAT(DISTINCT STR(?url0); separator="|") AS ?urls)
+          (GROUP_CONCAT(DISTINCT STR(?codeRepo0); separator="|") AS ?codeRepositories)
           (GROUP_CONCAT(DISTINCT STR(?partOf); separator="|") AS ?isPartOf)
           (GROUP_CONCAT(DISTINCT STR(?partOfName); separator="|") AS ?isPartOfNames)
           (SAMPLE(?vol) AS ?volume)
@@ -85,6 +86,7 @@ export async function GET(req: Request) {
           }
           OPTIONAL { ?paper schema:identifier ?ident0 . }
           OPTIONAL { ?paper schema:url ?url0 . }
+          OPTIONAL { ?paper schema:codeRepository ?codeRepo0 . }
 
           OPTIONAL { 
             ?paper schema:isPartOf ?partOf . 
@@ -235,6 +237,7 @@ export async function GET(req: Request) {
             subfields: splitPipe(row.subfields?.value ?? ""),
             sameAs: doiUrl,
             urls: splitPipe(row.urls?.value ?? ""),
+            codeRepositories: splitPipe(row.codeRepositories?.value ?? ""),
             isPartOf: splitPipe(row.isPartOf?.value ?? ""),
             isPartOfNames: splitPipe(row.isPartOfNames?.value ?? ""),
             volume: row.volume?.value ?? null,

@@ -44,6 +44,7 @@ export type PaperDetails = {
     subfields?: string[];
     sameAs?: string;
     urls?: string[];
+    codeRepositories?: string[];
     isPartOfNames?: string[];
 
     volume?: string | null;

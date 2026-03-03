@@ -101,6 +101,30 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
   "ivory coast": ["CI"],
 };
 
+const COUNTRY_CODE_ALIASES: Record<string, string> = {
+  FX: "FR",
+};
+
+function canonicalizeCountryCode(input: string): string {
+  const code = (input ?? "").trim().toUpperCase();
+  if (!code) return "";
+  return COUNTRY_CODE_ALIASES[code] ?? code;
+}
+
+function addCountryCodeWithAliases(out: Set<string>, rawCode: string) {
+  const code = (rawCode ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return;
+
+  const canonical = canonicalizeCountryCode(code);
+  out.add(canonical);
+  out.add(code);
+
+  for (const [alias, target] of Object.entries(COUNTRY_CODE_ALIASES)) {
+    if (canonicalizeCountryCode(alias) === canonical) out.add(alias);
+    if (canonicalizeCountryCode(target) === canonical) out.add(target.toUpperCase());
+  }
+}
+
 function normalizeCountryLookup(input: string): string {
   return (input ?? "")
     .toLowerCase()
@@ -157,6 +181,13 @@ const COUNTRY_VARIANTS_BY_CODE: Map<string, string[]> = (() => {
     for (const code of codes) addVariant(code, alias);
   }
 
+  for (const [aliasCode, canonicalCodeRaw] of Object.entries(COUNTRY_CODE_ALIASES)) {
+    const canonicalCode = canonicalizeCountryCode(canonicalCodeRaw);
+    addVariant(aliasCode, aliasCode);
+    addVariant(aliasCode, canonicalCode);
+    addVariant(canonicalCode, aliasCode);
+  }
+
   for (const [code] of byCode) addVariant(code, code);
 
   const out = new Map<string, string[]>();
@@ -172,22 +203,22 @@ function resolveCountryCodes(raw: string): string[] {
 
   const out = new Set<string>();
   const directCodes = value.toUpperCase().match(/\b[A-Z]{2}\b/g) ?? [];
-  for (const code of directCodes) out.add(code);
+  for (const code of directCodes) addCountryCodeWithAliases(out, code);
 
   const compact = value.toUpperCase().replace(/[^A-Z]/g, "");
-  if (/^[A-Z]{2}$/.test(compact)) out.add(compact);
+  if (/^[A-Z]{2}$/.test(compact)) addCountryCodeWithAliases(out, compact);
 
   const normalized = normalizeCountryLookup(value);
   if (normalized) {
     const aliased = COUNTRY_ALIASES[normalized] ?? [];
-    for (const code of aliased) out.add(code);
+    for (const code of aliased) addCountryCodeWithAliases(out, code);
 
     for (const entry of COUNTRY_INDEX) {
       if (
         entry.normalizedName === normalized ||
         (normalized.length >= 3 && entry.normalizedName.includes(normalized))
       ) {
-        out.add(entry.code);
+        addCountryCodeWithAliases(out, entry.code);
       }
     }
   }
