@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { escapeSparqlStringLiteral, sparqlSelect } from "@/lib/sparql";
+import { escapeSparqlStringLiteral, sparqlSelect, SparqlRow } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
 
 const PREFIXES = `
@@ -7,10 +7,29 @@ PREFIX schema: <https://schema.org/>
 `;
 
 const CACHE_TTL_MS = 60_000;
-type CacheEntry = { ts: number; value: any };
+type SearchAuthorRef = {
+  id: string;
+  iri: string;
+};
+
+type SearchResultItem = {
+  id: string;
+  iri: string;
+  title: string;
+  year?: string;
+  authorsText: string;
+  authors: SearchAuthorRef[];
+};
+
+type SearchPayload = {
+  items: SearchResultItem[];
+  total: number;
+};
+
+type CacheEntry = { ts: number; value: SearchPayload };
 const cache = new Map<string, CacheEntry>();
 
-function cacheGet(key: string) {
+function cacheGet(key: string): SearchPayload | null {
     const e = cache.get(key);
     if (!e) return null;
     if (Date.now() - e.ts > CACHE_TTL_MS) {
@@ -19,13 +38,15 @@ function cacheGet(key: string) {
     }
     return e.value;
 }
-function cacheSet(key: string, value: any){
+function cacheSet(key: string, value: SearchPayload) {
     if (cache.size > 300) cache.clear();
     cache.set(key, { ts: Date.now(), value });
 }
 
-function withLineNumbers(s: string) {
-    return s.split("\n").map((l, i) => `${String(i + 1).padStart(3, "0")}: ${l}`).join("\n")
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
 }
 
 function paperIriFromId(id: string) {
@@ -681,7 +702,7 @@ export async function GET(req: Request) {
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
     
-        let rows: any[] = [];
+        let rows: SparqlRow[] = [];
         let total = 0;
     
         if (parsed.directRisId) {
@@ -739,14 +760,14 @@ export async function GET(req: Request) {
                 authors: authorIris.map((iri: string) => ({ id: toPersonId(iri), iri})),
             };
         })
-        .filter(Boolean);
+        .filter((item): item is SearchResultItem => item !== null);
     
         const payload = { items, total };
         cacheSet(cacheKey, payload);
         return NextResponse.json(payload);
-    } catch (e: any) {
+    } catch (error: unknown) {
         return NextResponse.json(
-            { error: e?.message ?? "Unknown error" },
+            { error: errorMessage(error, "Unknown error") },
             { status: 500 }
         );
     }

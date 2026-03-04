@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getCountries } from "@/lib/topCountries";
 
-export async function GET(req: Request) {
+function errorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === "string" && error) return error;
+    return fallback;
+}
+
+export async function GET() {
     const month = 60 * 60 * 24 * 30;
 
         try {
@@ -11,9 +17,9 @@ export async function GET(req: Request) {
                     "Cache-Control": `public, max-age=${month}`,
                 },
             });
-        } catch (e: any) {
+        } catch (error: unknown) {
             return NextResponse.json(
-                { error: e?.message || "Failed to fetch top countries" },
+                { error: errorMessage(error, "Failed to fetch top countries") },
                 { status: 500 }
             );
         }

@@ -56,8 +56,8 @@ export default function UsersByCountryWidget({
     );
     const visibleRows = showAll ? sortedRows : sortedRows.slice(0, 4);
     const fourthBarColor =
-        (sortedRows[3] as any)?.color ??
-        (sortedRows[sortedRows.length - 1] as any)?.color ??
+        sortedRows[3]?.color ??
+        sortedRows[sortedRows.length - 1]?.color ??
         fallbackBarColor;
     const tailColor = darkenColorSlightly(fourthBarColor);
 
@@ -68,7 +68,7 @@ export default function UsersByCountryWidget({
                 pctDonut: r.pctDonut,
                 color: isZeroPct
                     ? separatorColor
-                    : (r as any).color ?? fallbackBarColor,
+                    : r.color ?? fallbackBarColor,
             };
         });
 
@@ -145,7 +145,7 @@ export default function UsersByCountryWidget({
                             ? separatorColor
                             : idx >= 3
                                 ? fourthBarColor
-                                : (r as any).color ?? fallbackBarColor;
+                                : r.color ?? fallbackBarColor;
                         const canClickCountry = Boolean(onCountryClick && r.code);
                         return (
                             <div key={r.code ? `${r.code}-${idx}` : `${r.name}-${idx}`} className="space-y-2">

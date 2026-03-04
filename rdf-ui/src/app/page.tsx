@@ -11,6 +11,31 @@ import UsersByCountryWidget from "@/components/CountryWidget";
 const PAGE_SIZE = 25;
 const THEME_STORAGE_KEY = "rdf-ui-theme";
 type Theme = "dark" | "light";
+type TopCountriesApiEntry = {
+  name?: string | null;
+  value?: number | string | null;
+};
+
+type TopCountriesApiResponse = {
+  error?: string;
+  rows?: {
+    totalPapers?: number | string | null;
+    rows?: TopCountriesApiEntry[];
+  };
+};
+
+function toErrorMessage(error: unknown, fallback = "Error"): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
+}
+
+function bodyErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = (payload as { error?: unknown }).error;
+  if (typeof candidate !== "string" || !candidate) return null;
+  return candidate;
+}
 
 function ccToFlag(cc: string): string {
   const code = (cc || "").trim().toUpperCase();
@@ -292,13 +317,14 @@ export default function HomePage() {
         const r = await fetch(`/api/top-countries`);
         const ct = r.headers.get("content-type") ?? "";
 
-        let j: any = null;
-        if (ct.includes("application/json")) j = await r.json() 
+        let payload: unknown = null;
+        if (ct.includes("application/json")) payload = await r.json() 
         else throw new Error((await r.text()) || `HTTP ${r.status}`);
 
-        if (!r.ok) throw new Error(j?.error ?? "Failed to load countries");
-        const mappedRaw: Array<Row | null> = (j.rows.rows ?? [])
-          .map((x: any) => {
+        if (!r.ok) throw new Error(bodyErrorMessage(payload) ?? "Failed to load countries");
+        const data = (payload as TopCountriesApiResponse) ?? {};
+        const mappedRaw: Array<Row | null> = (data.rows?.rows ?? [])
+          .map((x: TopCountriesApiEntry) => {
             const cc = String(x.name ?? "").trim().toUpperCase();
             if (!/^[A-Z]{2}$/.test(cc)) return null;
 
@@ -316,10 +342,10 @@ export default function HomePage() {
 
         if (!cancelled) {
           setCountryRows(mapped);
-          setTotalPapers(Number(j.rows.totalPapers) || 0);
+          setTotalPapers(Number(data.rows?.totalPapers) || 0);
         };
-      } catch (e: any) {
-        if (!cancelled) setCountryErr(e?.message ?? "Error");
+      } catch (error: unknown) {
+        if (!cancelled) setCountryErr(toErrorMessage(error));
       } finally {
         if (!cancelled) setCountryLoading(false);
       }
@@ -360,9 +386,9 @@ export default function HomePage() {
           setNextOffset(nextItems.length);
           setHasMore(nextItems.length < total);
         }
-      } catch (e: any) {
+      } catch (error: unknown) {
         if (!cancelled) {
-          setErr(e?.message ?? "Error");
+          setErr(toErrorMessage(error));
           setItems([]);
           setSearchTotal(0);
           setNextOffset(0);
@@ -404,8 +430,8 @@ export default function HomePage() {
       setSearchTotal(total);
       setNextOffset(loadedCount);
       setHasMore(incoming.length > 0 && loadedCount < total);
-    } catch (e: any) {
-      setErr(e?.message ?? "Error");
+    } catch (error: unknown) {
+      setErr(toErrorMessage(error));
       setHasMore(false);
     } finally {
       setLoadingMore(false);
@@ -439,31 +465,36 @@ export default function HomePage() {
       const r = await fetch(`/api/paper?id=${encodeURIComponent(id)}`);
       const ct = r.headers.get("content-type") ?? "";
 
-      let j: any = null
+      let payload: unknown = null;
       if (ct.includes("application/json")) {
-        j = await r.json()
+        payload = await r.json();
       } else {
         const text = await r.text();
         throw new Error(text || `HTTP ${r.status}`);
       }
 
-      if (!r.ok) throw new Error((j as any)?.error ?? "Failed to load paper");
-      setDetails((m) => ({ ...m, [id]: j }));
+      if (!r.ok) throw new Error(bodyErrorMessage(payload) ?? "Failed to load paper");
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Failed to load paper");
+      }
 
-      const authors = Array.isArray(j?.authorsDetailed) ? j.authorsDetailed : [];
+      const detailsPayload = payload as PaperDetails;
+      setDetails((m) => ({ ...m, [id]: detailsPayload }));
+
+      const authors = Array.isArray(detailsPayload.authorsDetailed) ? detailsPayload.authorsDetailed : [];
       if (authors.length > 0) {
         setKnownAuthorNames((m) => {
           const next = { ...m };
           for (const a of authors) {
-            const iri = typeof a?.iri === "string" ? a.iri : "";
-            const name = typeof a?.name === "string" ? a.name : "";
+            const iri = typeof a.iri === "string" ? a.iri : "";
+            const name = typeof a.name === "string" ? a.name : "";
             if (iri && name) next[iri] = name;
           }
           return next;
         });
       }
-    } catch (e: any) {
-      setDetailsErr((m) => ({ ...m, [id]: e?.message ?? "Error"}));
+    } catch (error: unknown) {
+      setDetailsErr((m) => ({ ...m, [id]: toErrorMessage(error) }));
     } finally {
       setDetailsLoading((m) => ({ ...m, [id]: false }));
     }

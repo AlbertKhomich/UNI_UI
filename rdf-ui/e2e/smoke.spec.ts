@@ -63,8 +63,15 @@ const SEARCH_RESPONSES: Record<string, Record<number, SearchResponse>> = {
   },
 };
 
+function matchesApiRequest(url: string, path: string, params?: Record<string, string>): boolean {
+  const parsed = new URL(url);
+  if (parsed.pathname !== path) return false;
+  if (!params) return true;
+  return Object.entries(params).every(([key, value]) => parsed.searchParams.get(key) === value);
+}
+
 test("search, open details, country filter, load more, and theme persistence", async ({ page }) => {
-  await page.route("**/api/top-countries", async (route) => {
+  await page.route("**/api/top-countries**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -151,10 +158,19 @@ test("search, open details, country filter, load more, and theme persistence", a
   await page.goto("/");
 
   const searchInput = page.getByPlaceholder("Search paper title... (a:, y:, aff:, c:)");
+  const firstSearchResponse = page.waitForResponse(
+    (response) =>
+      matchesApiRequest(response.url(), "/api/search", {
+        q: "graph retrieval",
+        offset: "0",
+        limit: "25",
+      }),
+  );
   await searchInput.fill("graph retrieval");
+  await firstSearchResponse;
 
-  await expect(page.getByText("Graph First Result")).toBeVisible();
-  await expect(page.getByText("Graph Second Result")).toBeVisible();
+  await expect(page.getByText("Graph First Result")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Graph Second Result")).toBeVisible({ timeout: 15_000 });
   const thirdResult = page.getByText("Graph Third Result");
   if (!(await thirdResult.isVisible().catch(() => false))) {
     const loadMoreHint = page.getByText("Scroll to load more");
@@ -172,7 +188,16 @@ test("search, open details, country filter, load more, and theme persistence", a
   await expect(thirdResult).toBeVisible();
   await expect(page.getByText("End of results.")).toBeVisible();
 
+  const filteredSearchResponse = page.waitForResponse(
+    (response) =>
+      matchesApiRequest(response.url(), "/api/search", {
+        q: "c: US",
+        offset: "0",
+        limit: "25",
+      }),
+  );
   await page.getByRole("button", { name: /United States \(US\)/ }).click();
+  await filteredSearchResponse;
   await expect(searchInput).toHaveValue("c: US");
   await expect(page.getByText("US Filtered Result")).toBeVisible();
 

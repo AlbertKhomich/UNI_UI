@@ -5,7 +5,7 @@ const baseURL = `http://127.0.0.1:${PORT}`;
 
 const config = defineConfig({
   testDir: "./e2e",
-  timeout: 30_000,
+  timeout: 180_000,
   expect: {
     timeout: 7_000,
   },

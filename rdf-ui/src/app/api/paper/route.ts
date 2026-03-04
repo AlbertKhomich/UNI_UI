@@ -16,7 +16,7 @@ function paperIriFromId(id: string) {
 }
 
 function extractDoiFromIdentifier(s: string): string | null {
-  let t = (s ?? "").trim();
+  const t = (s ?? "").trim();
   if (!t) return null;
 
   const m = t.match(/^DOI:\s*(10\.\d{4,9}\/\S+)\s*$/);
@@ -27,6 +27,12 @@ function extractDoiFromIdentifier(s: string): string | null {
 
 function doiToUrl(doi: string): string {
   return `https://doi.org/${doi}`;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
 }
 
 export async function GET(req: Request) {
@@ -150,7 +156,7 @@ export async function GET(req: Request) {
         const rows = await sparqlSelect(query);
         if (rows.length === 0) return NextResponse.json({error: "Not found"}, {status: 404 });
 
-        const row: any = rows[0];
+        const row = rows[0];
 
         const authorRows = (await sparqlSelect(authorQuery)) as SparqlRow[];
 
@@ -251,7 +257,7 @@ export async function GET(req: Request) {
             authors,
             authorsDetailed,
         });
-    } catch (e: any) {
-        return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+    } catch (error: unknown) {
+        return NextResponse.json({ error: errorMessage(error, "Unknown error") }, { status: 500 });
     }
 }
