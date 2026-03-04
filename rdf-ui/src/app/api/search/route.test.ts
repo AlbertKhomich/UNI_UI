@@ -148,10 +148,10 @@ describe("GET /api/search", () => {
     );
     expect(searchQuery).toContain('FILTER(STR(?year0) = "2024")');
     expect(searchQuery).toContain(
-      'FILTER(CONTAINS(LCASE(STR(?aaName)), LCASE("Doe, Jane")))',
+      'FILTER(CONTAINS(LCASE(STR(?aaName1)), LCASE("Doe, Jane")))',
     );
     expect(searchQuery).toContain(
-      'FILTER(CONTAINS(LCASE(STR(COALESCE(?affName, ?aff))), LCASE("University of Bonn")))',
+      'FILTER(CONTAINS(LCASE(STR(COALESCE(?affName2, ?aff2))), LCASE("University of Bonn")))',
     );
     expect(searchQuery).toMatch(/UCASE\(STR\(\?cc0\)\)\s+IN\s+\([^)]*"US"[^)]*\)/);
     expect(countQuery).toContain("COUNT(DISTINCT ?paper)");

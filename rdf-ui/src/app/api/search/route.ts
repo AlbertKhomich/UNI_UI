@@ -416,7 +416,7 @@ function buildDirectQuery(paperIri: string) {
     `;
 }
 
-function buildAuthorExists(authorQ: string): string {
+function buildAuthorJoinPattern(authorQ: string): string {
   if (!authorQ) return "";
 
   const v = authorQ.trim();
@@ -424,23 +424,19 @@ function buildAuthorExists(authorQ: string): string {
   if (iriMatch?.[2]) {
     const authorIri = iriMatch[2].replace(/[)>.,;]+$/, "");
     return `
-      FILTER EXISTS {
-        ?paper schema:author <${authorIri}> .
-      }
+      ?paper schema:author <${authorIri}> .
     `;
   }
 
   const authorLit = escapeSparqlStringLiteral(v);
   return `
-    FILTER EXISTS {
-      ?paper schema:author ?aa .
-      ?aa schema:name ?aaName .
-      FILTER(CONTAINS(LCASE(STR(?aaName)), LCASE(${authorLit})))
-    }
+    ?paper schema:author ?aa1 .
+    ?aa1 schema:name ?aaName1 .
+    FILTER(CONTAINS(LCASE(STR(?aaName1)), LCASE(${authorLit})))
   `;
 }
 
-function buildAffiliationExists(affiliationQ: string): string {
+function buildAffiliationJoinPattern(affiliationQ: string): string {
   if (!affiliationQ) return "";
 
   const v = affiliationQ.trim();
@@ -448,26 +444,48 @@ function buildAffiliationExists(affiliationQ: string): string {
   if (iriMatch?.[2]) {
     const affiliationIri = iriMatch[2].replace(/[)>.,;]+$/, "");
     return `
-      FILTER EXISTS {
-        ?paper schema:author ?aa .
-        ?aa schema:affiliation <${affiliationIri}> .
-      }
+      ?paper schema:author ?aa2 .
+      ?aa2 schema:affiliation <${affiliationIri}> .
     `;
   }
 
   const affiliationLit = escapeSparqlStringLiteral(v);
   return `
-    FILTER EXISTS {
-      ?paper schema:author ?aa .
-      ?aa schema:affiliation ?aff .
-      OPTIONAL { ?aff schema:name ?affName . }
-      FILTER(CONTAINS(LCASE(STR(COALESCE(?affName, ?aff))), LCASE(${affiliationLit})))
-    }
+    ?paper schema:author ?aa2 .
+    ?aa2 schema:affiliation ?aff2 .
+    OPTIONAL { ?aff2 schema:name ?affName2 . }
+    FILTER(CONTAINS(LCASE(STR(COALESCE(?affName2, ?aff2))), LCASE(${affiliationLit})))
   `;
 }
 
-function buildCountryExists(countryQ: string, countryCodes: string[]): string {
+function buildCountryJoinPattern(countryQ: string, countryCodes: string[]): string {
   if (!countryQ && countryCodes.length === 0) return "";
+
+  const ccVar = "?cc0";
+  const ccNormVar = "?ccNorm0";
+  const affVar = "?aff0";
+  const aaVar = "?aa0";
+
+  const normBind = `
+    BIND(
+      REPLACE(
+        REPLACE(LCASE(STR(${ccVar})), "[^a-z0-9]+", " "),
+        "^ +| +$",
+        ""
+      ) AS ${ccNormVar}
+    )
+  `;
+
+  const countrySource = `
+    ${aaVar} schema:affiliation ${affVar} .
+    {
+      ${affVar} schema:addressCountry ${ccVar} .
+    }
+    UNION
+    {
+      ${affVar} schema:address/schema:addressCountry ${ccVar} .
+    }
+  `;
 
   if (countryCodes.length > 0) {
     const codeList = countryCodes
@@ -489,44 +507,26 @@ function buildCountryExists(countryQ: string, countryCodes: string[]): string {
       .join(", ");
 
     return `
-      FILTER EXISTS {
-        ?paper schema:author ?aa .
-        ?aa schema:affiliation ?aff .
-        ?aff schema:addressCountry ?cc0 .
-        BIND(
-          REPLACE(
-            REPLACE(LCASE(STR(?cc0)), "[^a-z0-9]+", " "),
-            "^ +| +$",
-            ""
-          ) AS ?ccNorm
-        )
-        FILTER(
-          UCASE(STR(?cc0)) IN (${codeList})
-          || ?ccNorm IN (${variantList})
-        )
-      }
+      ?paper schema:author ${aaVar} .
+      ${countrySource}
+      ${normBind}
+      FILTER(
+        UCASE(STR(${ccVar})) IN (${codeList})
+        ${variantList ? `|| ${ccNormVar} IN (${variantList})` : ""}
+      )
     `;
   }
 
   const countryLit = escapeSparqlStringLiteral(countryQ.trim());
   const normalizedLit = escapeSparqlStringLiteral(normalizeCountryLookup(countryQ));
   return `
-    FILTER EXISTS {
-      ?paper schema:author ?aa .
-      ?aa schema:affiliation ?aff .
-      ?aff schema:addressCountry ?cc0 .
-      BIND(
-        REPLACE(
-          REPLACE(LCASE(STR(?cc0)), "[^a-z0-9]+", " "),
-          "^ +| +$",
-          ""
-        ) AS ?ccNorm
-      )
-      FILTER(
-        CONTAINS(LCASE(STR(?cc0)), LCASE(${countryLit}))
-        || CONTAINS(?ccNorm, ${normalizedLit})
-      )
-    }
+    ?paper schema:author ${aaVar} .
+    ${countrySource}
+    ${normBind}
+    FILTER(
+      CONTAINS(LCASE(STR(${ccVar})), LCASE(${countryLit}))
+      ${normalizedLit ? `|| CONTAINS(${ccNormVar}, ${normalizedLit})` : ""}
+    )
   `;
 }
 
@@ -565,20 +565,22 @@ function buildSearchQuery(args: {
           : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(${titleLit})))`)
       : "";
 
-    const yearFilter = yearQ 
+    const yearPattern = yearQ
       ? `
-        FILTER(BOUND(?year0))
+        ?paper schema:datePublished ?year0 .
         FILTER(STR(?year0) = ${yearLit})
-        ` 
-        : "";
+        `
+      : `
+        OPTIONAL { ?paper schema:datePublished ?year0 . }
+        `;
 
     const authorIriFilter = directAuthorIri
       ? `?paper schema:author <${directAuthorIri}> .`
       : "";
 
-    const authorExists = buildAuthorExists(authorQ);
-    const affiliationExists = buildAffiliationExists(affiliationQ);
-    const countryExists = buildCountryExists(countryQ, countryCodes);
+    const authorJoinPattern = buildAuthorJoinPattern(authorQ);
+    const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);
+    const countryJoinPattern = buildCountryJoinPattern(countryQ, countryCodes);
     
 
     return `${PREFIXES}
@@ -589,14 +591,28 @@ function buildSearchQuery(args: {
       (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
-      FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+      {
+        SELECT DISTINCT ?paper ?nameSort
+        WHERE {
+          FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
 
-      ${authorIriFilter}
+          ${authorIriFilter}
 
-      ?paper schema:name ?name .
-      ${titleFilter}
+          ?paper schema:name ?name .
+          BIND(LCASE(STR(?name)) AS ?nameSort)
+          ${titleFilter}
+          ${yearPattern}
+          ${authorJoinPattern}
+          ${affiliationJoinPattern}
+          ${countryJoinPattern}
+        }
+        ORDER BY ?nameSort ?paper
+        LIMIT ${limit}
+        OFFSET ${offset}
+      }
+
+      OPTIONAL { ?paper schema:name ?name . }
       OPTIONAL { ?paper schema:datePublished ?year0 . }
-      ${yearFilter}
       optional {
         {
           select ?paper ?a (min(str(?aName)) as ?aNamePick)
@@ -607,14 +623,9 @@ function buildSearchQuery(args: {
             group by ?paper ?a
         }
       }
-      ${authorExists}
-      ${affiliationExists}
-      ${countryExists}
     }
     GROUP BY ?paper
     ORDER BY LCASE(STR(SAMPLE(?name)))
-    LIMIT ${limit}
-    OFFSET ${offset}
     `;
 }
 
@@ -640,20 +651,22 @@ function buildCountQuery(args: {
             : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(${titleLit})))`)
         : "";
 
-    const yearFilter = yearQ
+    const yearPattern = yearQ
       ? `
-        FILTER(BOUND(?year0))
+        ?paper schema:datePublished ?year0 .
         FILTER(STR(?year0) = ${yearLit})
         `
-      : "";
+      : `
+        OPTIONAL { ?paper schema:datePublished ?year0 . }
+        `;
 
     const authorIriFilter = directAuthorIri
       ? `?paper schema:author <${directAuthorIri}> .`
       : "";
 
-    const authorExists = buildAuthorExists(authorQ);
-    const affiliationExists = buildAffiliationExists(affiliationQ);
-    const countryExists = buildCountryExists(countryQ, countryCodes);
+    const authorJoinPattern = buildAuthorJoinPattern(authorQ);
+    const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);
+    const countryJoinPattern = buildCountryJoinPattern(countryQ, countryCodes);
 
     return `${PREFIXES}
     SELECT (COUNT(DISTINCT ?paper) AS ?total)
@@ -664,11 +677,10 @@ function buildCountQuery(args: {
 
       ?paper schema:name ?name .
       ${titleFilter}
-      OPTIONAL { ?paper schema:datePublished ?year0 . }
-      ${yearFilter}
-      ${authorExists}
-      ${affiliationExists}
-      ${countryExists}
+      ${yearPattern}
+      ${authorJoinPattern}
+      ${affiliationJoinPattern}
+      ${countryJoinPattern}
     }
     `;
 }
@@ -736,28 +748,29 @@ export async function GET(req: Request) {
             total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
     
-        const items = rows.map((row) => {
+        const items = rows.map((row): SearchResultItem | null => {
             const paperIri = row.paper?.value ?? "";
             if (!paperIri) return null;
 
             const authorIris = (row.authorIris?.value ?? "")
               .split("|")
               .filter(Boolean);
-            const rawAuthors = row.authors?.value ?? ""
+            const rawAuthors = row.authors?.value ?? "";
             const authorsText = rawAuthors
                 .split(";")
                 .map((s: string) => s.trim())
                 .filter(Boolean)
                 .map(toDisplayName)
-                .join(", ")
-    
+                .join(", ");
+            const year = row.year?.value;
+
             return {
                 id: toPaperId(paperIri),
                 iri: paperIri,
                 title: row.title?.value ?? "",
-                year: row.year?.value ?? undefined,
+                ...(year ? { year } : {}),
                 authorsText,
-                authors: authorIris.map((iri: string) => ({ id: toPersonId(iri), iri})),
+                authors: authorIris.map((iri: string) => ({ id: toPersonId(iri), iri })),
             };
         })
         .filter((item): item is SearchResultItem => item !== null);
