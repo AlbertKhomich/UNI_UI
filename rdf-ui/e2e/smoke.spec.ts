@@ -11,11 +11,12 @@ type SearchItem = {
 type SearchResponse = {
   items: SearchItem[];
   total: number;
+  nextCursor: string | null;
 };
 
-const SEARCH_RESPONSES: Record<string, Record<number, SearchResponse>> = {
+const SEARCH_RESPONSES: Record<string, Record<string, SearchResponse>> = {
   "graph retrieval": {
-    0: {
+    "": {
       total: 3,
       items: [
         {
@@ -33,8 +34,9 @@ const SEARCH_RESPONSES: Record<string, Record<number, SearchResponse>> = {
           authorsText: "John Smith",
         },
       ],
+      nextCursor: "cursor-graph-2",
     },
-    2: {
+    "cursor-graph-2": {
       total: 3,
       items: [
         {
@@ -45,10 +47,11 @@ const SEARCH_RESPONSES: Record<string, Record<number, SearchResponse>> = {
           authorsText: "Alice Jones",
         },
       ],
+      nextCursor: null,
     },
   },
   "c: US": {
-    0: {
+    "": {
       total: 1,
       items: [
         {
@@ -59,6 +62,7 @@ const SEARCH_RESPONSES: Record<string, Record<number, SearchResponse>> = {
           authorsText: "Jane Doe",
         },
       ],
+      nextCursor: null,
     },
   },
 };
@@ -91,12 +95,13 @@ test("search, open details, country filter, load more, and theme persistence", a
   await page.route("**/api/search**", async (route) => {
     const url = new URL(route.request().url());
     const q = url.searchParams.get("q") ?? "";
-    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const cursor = url.searchParams.get("cursor") ?? "";
 
-    const qResponses = SEARCH_RESPONSES[q] ?? { 0: { total: 0, items: [] } };
-    const response = qResponses[offset] ?? {
-      total: qResponses[0]?.total ?? 0,
+    const qResponses = SEARCH_RESPONSES[q] ?? { "": { total: 0, items: [], nextCursor: null } };
+    const response = qResponses[cursor] ?? {
+      total: qResponses[""]?.total ?? 0,
       items: [],
+      nextCursor: null,
     };
 
     await route.fulfill({
@@ -162,7 +167,6 @@ test("search, open details, country filter, load more, and theme persistence", a
     (response) =>
       matchesApiRequest(response.url(), "/api/search", {
         q: "graph retrieval",
-        offset: "0",
         limit: "25",
       }),
   );
@@ -192,7 +196,6 @@ test("search, open details, country filter, load more, and theme persistence", a
     (response) =>
       matchesApiRequest(response.url(), "/api/search", {
         q: "c: US",
-        offset: "0",
         limit: "25",
       }),
   );

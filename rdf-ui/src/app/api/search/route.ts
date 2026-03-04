@@ -24,6 +24,12 @@ type SearchResultItem = {
 type SearchPayload = {
   items: SearchResultItem[];
   total: number;
+  nextCursor: string | null;
+};
+
+type SearchCursor = {
+  nameSort: string;
+  paper: string;
 };
 
 type CacheEntry = { ts: number; value: SearchPayload };
@@ -52,6 +58,26 @@ function errorMessage(error: unknown, fallback: string): string {
 function paperIriFromId(id: string) {
   const clean = (id ?? "").trim().replace(/^\/+/, "");
   return `https://dice-research.org/id/publication/ris/${clean}`;
+}
+
+function encodeSearchCursor(cursor: SearchCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeSearchCursor(raw: string): SearchCursor | null {
+  const input = (raw ?? "").trim();
+  if (!input) return null;
+
+  try {
+    const json = Buffer.from(input, "base64url").toString("utf8");
+    const parsed = JSON.parse(json) as Partial<SearchCursor>;
+    const nameSort = typeof parsed.nameSort === "string" ? parsed.nameSort.trim() : "";
+    const paper = typeof parsed.paper === "string" ? parsed.paper.trim() : "";
+    if (!nameSort || !paper) return null;
+    return { nameSort, paper };
+  } catch {
+    return null;
+  }
 }
 
 
@@ -541,6 +567,7 @@ function buildSearchQuery(args: {
     mode: "starts" | "contains";
     limit: number;
     offset: number;
+    cursor: SearchCursor | null;
 }) {
     const {
       titleQ,
@@ -553,6 +580,7 @@ function buildSearchQuery(args: {
       mode,
       limit,
       offset,
+      cursor,
     } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
@@ -581,6 +609,19 @@ function buildSearchQuery(args: {
     const authorJoinPattern = buildAuthorJoinPattern(authorQ);
     const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);
     const countryJoinPattern = buildCountryJoinPattern(countryQ, countryCodes);
+    const cursorFilter = cursor
+      ? `
+          FILTER(
+            (?nameSort > ${escapeSparqlStringLiteral(cursor.nameSort)})
+            ||
+            (
+              ?nameSort = ${escapeSparqlStringLiteral(cursor.nameSort)}
+              && STR(?paper) > ${escapeSparqlStringLiteral(cursor.paper)}
+            )
+          )
+        `
+      : "";
+    const offsetClause = cursor ? "" : `OFFSET ${offset}`;
     
 
     return `${PREFIXES}
@@ -588,6 +629,7 @@ function buildSearchQuery(args: {
       ?paper
       (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
+      (SAMPLE(?nameSort) AS ?cursorNameSort)
       (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
@@ -600,6 +642,7 @@ function buildSearchQuery(args: {
 
           ?paper schema:name ?name .
           BIND(LCASE(STR(?name)) AS ?nameSort)
+          ${cursorFilter}
           ${titleFilter}
           ${yearPattern}
           ${authorJoinPattern}
@@ -608,7 +651,7 @@ function buildSearchQuery(args: {
         }
         ORDER BY ?nameSort ?paper
         LIMIT ${limit}
-        OFFSET ${offset}
+        ${offsetClause}
       }
 
       OPTIONAL { ?paper schema:name ?name . }
@@ -701,16 +744,20 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const raw = (url.searchParams.get("q") ?? url.searchParams.get("title") ?? "").trim();
-        if (!raw) return NextResponse.json({ items: [], total: 0 });
+        if (!raw) return NextResponse.json({ items: [], total: 0, nextCursor: null });
 
         if (raw.length > 300) return NextResponse.json({ error: "Querry too long" }, {status: 400 });
+        const rawCursor = (url.searchParams.get("cursor") ?? "").trim();
+        const cursor = decodeSearchCursor(rawCursor);
         const offset = Math.max(0, Number(url.searchParams.get("offset") ?? "0") || 0);
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? "25") || 25));
+        const fetchLimit = Math.min(101, limit + 1);
+        const effectiveOffset = cursor ? 0 : offset;
 
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|o=${offset}|l=${limit}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
     
@@ -720,7 +767,7 @@ export async function GET(req: Request) {
         if (parsed.directRisId) {
             const allRows = await sparqlSelect(buildDirectQuery(paperIriFromId(parsed.directRisId)));
             total = allRows.length;
-            rows = offset === 0 ? allRows.slice(0, limit) : [];
+            rows = !cursor && effectiveOffset === 0 ? allRows.slice(0, limit) : [];
         } else {
             if (
               !parsed.titleQ &&
@@ -730,25 +777,56 @@ export async function GET(req: Request) {
               !parsed.countryQ &&
               !parsed.directAuthorIri
             ) {
-                return NextResponse.json({ items: [], total: 0 });
+                return NextResponse.json({ items: [], total: 0, nextCursor: null });
             }
 
-            if (parsed.titleQ && parsed.titleQ.length < 3) return NextResponse.json({ items: [], total: 0 });
+            if (parsed.titleQ && parsed.titleQ.length < 3) {
+              return NextResponse.json({ items: [], total: 0, nextCursor: null });
+            }
 
             let modeUsed: "starts" | "contains" = "starts";
 
-            const q1 = buildSearchQuery({ ...parsed, mode: modeUsed, limit, offset });
+            const q1 = buildSearchQuery({
+              ...parsed,
+              mode: modeUsed,
+              limit: fetchLimit,
+              offset: effectiveOffset,
+              cursor,
+            });
             rows = await sparqlSelect(q1);
             if (rows.length === 0 && parsed.titleQ) {
                 modeUsed = "contains";
-                rows = await sparqlSelect(buildSearchQuery({ ...parsed, mode: modeUsed, limit, offset }));
+                rows = await sparqlSelect(
+                  buildSearchQuery({
+                    ...parsed,
+                    mode: modeUsed,
+                    limit: fetchLimit,
+                    offset: effectiveOffset,
+                    cursor,
+                  }),
+                );
             }
 
             const countRows = await sparqlSelect(buildCountQuery({ ...parsed, mode: modeUsed }));
             total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
+
+        const hasNextPage = rows.length > limit;
+        const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+        const nextCursor = (() => {
+          if (!hasNextPage || pageRows.length === 0) return null;
+          const last = pageRows[pageRows.length - 1];
+          const paper = (last.paper?.value ?? "").trim();
+          const nameSort = (
+            last.cursorNameSort?.value ??
+            last.title?.value?.toLowerCase() ??
+            ""
+          ).trim();
+          if (!paper || !nameSort) return null;
+          return encodeSearchCursor({ nameSort, paper });
+        })();
     
-        const items = rows.map((row): SearchResultItem | null => {
+        const items = pageRows.map((row): SearchResultItem | null => {
             const paperIri = row.paper?.value ?? "";
             if (!paperIri) return null;
 
@@ -775,7 +853,7 @@ export async function GET(req: Request) {
         })
         .filter((item): item is SearchResultItem => item !== null);
     
-        const payload = { items, total };
+        const payload = { items, total, nextCursor };
         cacheSet(cacheKey, payload);
         return NextResponse.json(payload);
     } catch (error: unknown) {

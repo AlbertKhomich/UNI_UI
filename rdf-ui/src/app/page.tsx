@@ -216,7 +216,7 @@ export default function HomePage() {
   const [searchTotal, setSearchTotal] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -293,10 +293,14 @@ export default function HomePage() {
     });
   }
 
-  const fetchSearchPage = useCallback(async (offset: number): Promise<SearchResponse> => {
-    const r = await fetch(
-      `/api/search?q=${encodeURIComponent(dq.trim())}&offset=${offset}&limit=${PAGE_SIZE}`
-    );
+  const fetchSearchPage = useCallback(async (cursor: string | null): Promise<SearchResponse> => {
+    const params = new URLSearchParams({
+      q: dq.trim(),
+      limit: String(PAGE_SIZE),
+    });
+    if (cursor) params.set("cursor", cursor);
+
+    const r = await fetch(`/api/search?${params.toString()}`);
     if (!r.ok) throw new Error(await toFriendlyHttpError(r, "Search failed"));
 
     const ct = r.headers.get("content-type") ?? "";
@@ -368,7 +372,7 @@ export default function HomePage() {
       if (!canSearch) {
         setItems([]);
         setSearchTotal(0);
-        setNextOffset(0);
+        setNextCursor(null);
         setHasMore(false);
         setErr(null);
         return;
@@ -377,21 +381,22 @@ export default function HomePage() {
       setLoadingMore(false);
       setErr(null);
       try {
-        const j = await fetchSearchPage(0);
+        const j = await fetchSearchPage(null);
         if (!cancelled) {
           const nextItems = j.items ?? [];
           const total = Number(j.total) || nextItems.length;
+          const next = typeof j.nextCursor === "string" && j.nextCursor ? j.nextCursor : null;
           setItems(nextItems);
           setSearchTotal(total);
-          setNextOffset(nextItems.length);
-          setHasMore(nextItems.length < total);
+          setNextCursor(next);
+          setHasMore(Boolean(next));
         }
       } catch (error: unknown) {
         if (!cancelled) {
           setErr(toErrorMessage(error));
           setItems([]);
           setSearchTotal(0);
-          setNextOffset(0);
+          setNextCursor(null);
           setHasMore(false);
         }
       } finally {
@@ -407,12 +412,14 @@ export default function HomePage() {
 
   const loadMore = useCallback(async () => {
     if (!canSearch || loading || loadingMore || !hasMore) return;
+    if (!nextCursor) return;
 
     setLoadingMore(true);
     try {
-      const j = await fetchSearchPage(nextOffset);
+      const j = await fetchSearchPage(nextCursor);
       const incoming = j.items ?? [];
       const total = Number(j.total) || searchTotal;
+      const next = typeof j.nextCursor === "string" && j.nextCursor ? j.nextCursor : null;
 
       setItems((prev) => {
         const seen = new Set(prev.map((x) => x.iri));
@@ -426,17 +433,16 @@ export default function HomePage() {
         return merged;
       });
 
-      const loadedCount = nextOffset + incoming.length;
       setSearchTotal(total);
-      setNextOffset(loadedCount);
-      setHasMore(incoming.length > 0 && loadedCount < total);
+      setNextCursor(next);
+      setHasMore(Boolean(next));
     } catch (error: unknown) {
       setErr(toErrorMessage(error));
       setHasMore(false);
     } finally {
       setLoadingMore(false);
     }
-  }, [canSearch, loading, loadingMore, hasMore, fetchSearchPage, nextOffset, searchTotal]);
+  }, [canSearch, loading, loadingMore, hasMore, nextCursor, fetchSearchPage, searchTotal]);
 
   useEffect(() => {
     const el = loadMoreRef.current;

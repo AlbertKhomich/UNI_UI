@@ -29,7 +29,7 @@ describe("GET /api/search", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ items: [], total: 0 });
+    expect(body).toEqual({ items: [], total: 0, nextCursor: null });
     expect(mockedSparqlSelect).not.toHaveBeenCalled();
   });
 
@@ -64,6 +64,7 @@ describe("GET /api/search", () => {
 
     expect(response.status).toBe(200);
     expect(body.total).toBe(1);
+    expect(body.nextCursor).toBeNull();
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({
       id: "12345",
@@ -233,5 +234,77 @@ describe("GET /api/search", () => {
     expect(third.status).toBe(200);
     expect(thirdBody.total).toBe(1);
     expect(mockedSparqlSelect).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns nextCursor and uses cursor filter on follow-up page", async () => {
+    const searchQueries: string[] = [];
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        return [{ total: { type: "literal", value: "3" } }];
+      }
+
+      searchQueries.push(query);
+      const hasCursorFilter = query.includes("?nameSort >") && query.includes("STR(?paper) >");
+      if (hasCursorFilter) {
+        return [
+          {
+            paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/3" },
+            title: { type: "literal", value: "Gamma" },
+            cursorNameSort: { type: "literal", value: "gamma" },
+            year: { type: "literal", value: "2023" },
+            authors: { type: "literal", value: "Gamma, Gina" },
+            authorIris: { type: "literal", value: "https://dice-research.org/id/author/hash/g3" },
+          },
+        ] as SparqlRow[];
+      }
+
+      return [
+        {
+          paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/1" },
+          title: { type: "literal", value: "Alpha" },
+          cursorNameSort: { type: "literal", value: "alpha" },
+          year: { type: "literal", value: "2025" },
+          authors: { type: "literal", value: "Alpha, Ann" },
+          authorIris: { type: "literal", value: "https://dice-research.org/id/author/hash/a1" },
+        },
+        {
+          paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/2" },
+          title: { type: "literal", value: "Beta" },
+          cursorNameSort: { type: "literal", value: "beta" },
+          year: { type: "literal", value: "2024" },
+          authors: { type: "literal", value: "Beta, Ben" },
+          authorIris: { type: "literal", value: "https://dice-research.org/id/author/hash/b2" },
+        },
+        {
+          paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/3" },
+          title: { type: "literal", value: "Gamma" },
+          cursorNameSort: { type: "literal", value: "gamma" },
+          year: { type: "literal", value: "2023" },
+          authors: { type: "literal", value: "Gamma, Gina" },
+          authorIris: { type: "literal", value: "https://dice-research.org/id/author/hash/g3" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const first = await GET(new Request("http://localhost/api/search?q=alpha&limit=2"));
+    const firstBody = await first.json();
+    expect(first.status).toBe(200);
+    expect(firstBody.items).toHaveLength(2);
+    expect(firstBody.total).toBe(3);
+    expect(typeof firstBody.nextCursor).toBe("string");
+
+    const second = await GET(
+      new Request(
+        `http://localhost/api/search?q=alpha&limit=2&cursor=${encodeURIComponent(firstBody.nextCursor)}`,
+      ),
+    );
+    const secondBody = await second.json();
+    expect(second.status).toBe(200);
+    expect(secondBody.items).toHaveLength(1);
+    expect(secondBody.total).toBe(3);
+    expect(secondBody.nextCursor).toBeNull();
+    expect(searchQueries.some((q) => q.includes("?nameSort >") && q.includes("STR(?paper) >"))).toBe(
+      true,
+    );
   });
 });

@@ -9,6 +9,7 @@ export type SearchItem = {
 export type SearchResponse = {
     items: SearchItem[];
     total?: number;
+    nextCursor?: string | null;
 }
 
 export type PersonWithAffiliations = {
