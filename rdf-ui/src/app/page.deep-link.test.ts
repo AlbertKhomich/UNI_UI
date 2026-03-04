@@ -9,6 +9,9 @@ describe("deep-link query mapping", () => {
     expect(toSearchQueryFromIri("http://upbkg.data.dice-research.org/orcid/0000-0001")).toBe(
       "a: http://upbkg.data.dice-research.org/orcid/0000-0001",
     );
+    expect(
+      toSearchQueryFromIri("http://131.234.26.202:3001/id/person/hash/63fa35093706"),
+    ).toBe("a: http://upbkg.data.dice-research.org/id/person/hash/63fa35093706");
   });
 
   it("maps organization IRIs to affiliation-prefixed query", () => {
@@ -28,6 +31,9 @@ describe("deep-link query mapping", () => {
       toSearchQueryFromIri("http://upbkg.data.dice-research.org/id/publication/paper-1"),
     ).toBe("http://upbkg.data.dice-research.org/id/publication/paper-1");
     expect(toSearchQueryFromIri("http://upbkg.data.dice-research.org/id/venue/venue-1")).toBe(
+      "http://upbkg.data.dice-research.org/id/venue/venue-1",
+    );
+    expect(toSearchQueryFromIri("http://131.234.26.202:3001/id/venue/venue-1")).toBe(
       "http://upbkg.data.dice-research.org/id/venue/venue-1",
     );
   });
@@ -66,6 +72,15 @@ describe("deep-link query mapping", () => {
       search: "",
     });
     expect(q).toBe("http://upbkg.data.dice-research.org/id/publication/paper-123");
+  });
+
+  it("canonicalizes non-root path host when no params are present", () => {
+    const q = initialQueryFromLocation({
+      origin: "http://131.234.26.202:3001",
+      pathname: "/id/person/hash/63fa35093706",
+      search: "",
+    });
+    expect(q).toBe("a: http://upbkg.data.dice-research.org/id/person/hash/63fa35093706");
   });
 
   it("ignores api paths for initial query", () => {

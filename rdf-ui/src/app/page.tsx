@@ -13,6 +13,8 @@ const THEME_STORAGE_KEY = "rdf-ui-theme";
 const PAPER_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
 const PERSON_PATH_REGEX = /\/(?:id\/person|orcid)(?:\/|$)/i;
 const ORGANIZATION_PATH_REGEX = /\/(?:id\/org|ror|openalex_org)(?:\/|$)/i;
+const CANONICAL_UPBKG_ORIGIN = "http://upbkg.data.dice-research.org";
+const CANONICALIZABLE_RDF_PATH_REGEX = /\/(?:id\/(?:person|org|publication|venue)|orcid|ror|openalex_org)(?:\/|$)/i;
 type Theme = "dark" | "light";
 type TopCountriesApiEntry = {
   name?: string | null;
@@ -194,8 +196,18 @@ function normalizeIriInput(input: string): string {
     .replace(/[)>.,;]+$/, "");
 }
 
+function canonicalizeUpbkgIri(input: string): string {
+  const raw = normalizeIriInput(input);
+  if (!raw) return "";
+
+  const parsed = parseUrl(raw);
+  if (!parsed) return raw;
+  if (!CANONICALIZABLE_RDF_PATH_REGEX.test(parsed.pathname)) return raw;
+  return `${CANONICAL_UPBKG_ORIGIN}${parsed.pathname}`;
+}
+
 export function toSearchQueryFromIri(input: string): string {
-  const iri = normalizeIriInput(input);
+  const iri = canonicalizeUpbkgIri(input);
   if (!iri) return "";
 
   const parsed = parseUrl(iri);
@@ -970,7 +982,7 @@ export default function HomePage() {
           target="_blank"
         >
           <Image
-            src="logo.svg" 
+            src="/logo.svg" 
             alt="Dice group"
             width={110}
             height={55}

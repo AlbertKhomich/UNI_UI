@@ -7,6 +7,9 @@ PREFIX schema: <https://schema.org/>
 `;
 const PAPER_RESOURCE_FILTER = `FILTER(REGEX(STR(?paper), "/id/(publication|venue)(/|$)"))`;
 const PUBLICATION_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
+const AUTHOR_PATH_REGEX = /^\/id\/(?:person|author)\/(hash|uni)\/([^\/?#]+)$/i;
+const AUTHOR_HOST_VARIANTS = ["upbkg.data.dice-research.org", "dice-research.org"] as const;
+const AUTHOR_SCHEME_VARIANTS = ["http", "https"] as const;
 
 const CACHE_TTL_MS = 60_000;
 type SearchAuthorRef = {
@@ -135,6 +138,44 @@ function extractDirectPaperIri(input: string): string | null {
     return iri;
   } catch {
     return null;
+  }
+}
+
+function buildDirectAuthorIriFilter(directAuthorIri: string): string {
+  const iri = (directAuthorIri ?? "").trim();
+  if (!iri) return "";
+
+  try {
+    const parsed = new URL(iri);
+    const m = parsed.pathname.match(AUTHOR_PATH_REGEX);
+    if (!m?.[1] || !m[2]) {
+      return `?paper schema:author <${iri}> .`;
+    }
+
+    const bucket = m[1].toLowerCase();
+    const authorId = m[2];
+    const candidates = new Set<string>([
+      iri,
+      `${parsed.protocol}//${parsed.host}/id/person/${bucket}/${authorId}`,
+      `${parsed.protocol}//${parsed.host}/id/author/${bucket}/${authorId}`,
+    ]);
+
+    for (const scheme of AUTHOR_SCHEME_VARIANTS) {
+      for (const host of AUTHOR_HOST_VARIANTS) {
+        candidates.add(`${scheme}://${host}/id/person/${bucket}/${authorId}`);
+        candidates.add(`${scheme}://${host}/id/author/${bucket}/${authorId}`);
+      }
+    }
+
+    const values = Array.from(candidates)
+      .map((candidate) => `<${candidate}>`)
+      .join(" ");
+    return `
+      VALUES ?directAuthorIri { ${values} }
+      ?paper schema:author ?directAuthorIri .
+    `;
+  } catch {
+    return `?paper schema:author <${iri}> .`;
   }
 }
 
@@ -661,9 +702,7 @@ function buildSearchQuery(args: {
         OPTIONAL { ?paper schema:datePublished ?year0 . }
         `;
 
-    const authorIriFilter = directAuthorIri
-      ? `?paper schema:author <${directAuthorIri}> .`
-      : "";
+    const authorIriFilter = directAuthorIri ? buildDirectAuthorIriFilter(directAuthorIri) : "";
 
     const authorJoinPattern = buildAuthorJoinPattern(authorQ);
     const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);
@@ -763,9 +802,7 @@ function buildCountQuery(args: {
         OPTIONAL { ?paper schema:datePublished ?year0 . }
         `;
 
-    const authorIriFilter = directAuthorIri
-      ? `?paper schema:author <${directAuthorIri}> .`
-      : "";
+    const authorIriFilter = directAuthorIri ? buildDirectAuthorIriFilter(directAuthorIri) : "";
 
     const authorJoinPattern = buildAuthorJoinPattern(authorQ);
     const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);

@@ -253,6 +253,47 @@ describe("GET /api/search", () => {
     expect(countQuery).toContain('?paper schema:author <https://example.org/people/abc> .');
   });
 
+  it("expands person/author hash variants for direct author IRI token", async () => {
+    let searchQuery = "";
+    let countQuery = "";
+
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        countQuery = query;
+        return [{ total: { type: "literal", value: "1" } }];
+      }
+
+      searchQuery = query;
+      return [
+        {
+          paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/500" },
+          title: { type: "literal", value: "Author Variant Paper" },
+          year: { type: "literal", value: "2026" },
+          authors: { type: "literal", value: "Doe, Jane" },
+          authorIris: { type: "literal", value: "http://upbkg.data.dice-research.org/id/author/hash/63fa35093706" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const raw = "a: http://upbkg.data.dice-research.org/id/person/hash/63fa35093706";
+    const response = await GET(
+      new Request(`http://localhost/api/search?q=${encodeURIComponent(raw)}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(1);
+    expect(searchQuery).toContain("VALUES ?directAuthorIri");
+    expect(searchQuery).toContain(
+      "<http://upbkg.data.dice-research.org/id/person/hash/63fa35093706>",
+    );
+    expect(searchQuery).toContain(
+      "<http://upbkg.data.dice-research.org/id/author/hash/63fa35093706>",
+    );
+    expect(searchQuery).toContain("?paper schema:author ?directAuthorIri .");
+    expect(countQuery).toContain("VALUES ?directAuthorIri");
+  });
+
   it("uses cache within TTL and refreshes after TTL", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
