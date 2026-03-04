@@ -5,6 +5,8 @@ import { toDisplayName } from "@/lib/format";
 const PREFIXES = `
 PREFIX schema: <https://schema.org/>
 `;
+const PAPER_RESOURCE_FILTER = `FILTER(REGEX(STR(?paper), "/id/(publication|venue)(/|$)"))`;
+const PUBLICATION_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
 
 const CACHE_TTL_MS = 60_000;
 type SearchAuthorRef = {
@@ -55,9 +57,29 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function rowNameSort(row: SparqlRow): string {
+  return (
+    row.nameSort?.value ??
+    row.cursorNameSort?.value ??
+    row.title?.value?.toLowerCase() ??
+    ""
+  ).trim();
+}
+
+function rowPaperIri(row: SparqlRow): string {
+  return (row.paper?.value ?? "").trim();
+}
+
+function compareRowsByCursorKey(a: SparqlRow, b: SparqlRow): number {
+  const nameCmp = rowNameSort(a).localeCompare(rowNameSort(b));
+  if (nameCmp !== 0) return nameCmp;
+  return rowPaperIri(a).localeCompare(rowPaperIri(b));
+}
+
 function paperIriFromId(id: string) {
-  const clean = (id ?? "").trim().replace(/^\/+/, "");
-  return `https://dice-research.org/id/publication/ris/${clean}`;
+  const clean = (id ?? "").trim().replace(/^\/+/, "").replace(/[)>.,;]+$/, "");
+  if (/^https?:\/\//i.test(clean)) return clean;
+  return `http://upbkg.data.dice-research.org/id/publication/ris/${clean}`;
 }
 
 function encodeSearchCursor(cursor: SearchCursor): string {
@@ -99,6 +121,23 @@ function extractRisIdFromAnything(input: string): string | null {
   return null;
 }
 
+function extractDirectPaperIri(input: string): string | null {
+  const s = (input ?? "").trim();
+  if (!s) return null;
+
+  const iriMatch = s.match(/^(<)?(https?:\/\/\S+?)\1?$/i);
+  if (!iriMatch?.[2]) return null;
+
+  const iri = iriMatch[2].replace(/[)>.,;]+$/, "");
+  try {
+    const parsed = new URL(iri);
+    if (!PUBLICATION_OR_VENUE_PATH_REGEX.test(parsed.pathname)) return null;
+    return iri;
+  } catch {
+    return null;
+  }
+}
+
 
 type ParsedOmni = {
   titleQ: string;
@@ -107,6 +146,7 @@ type ParsedOmni = {
   affiliationQ: string;
   countryQ: string;
   countryCodes: string[];
+  directPaperIri: string | null;
   directRisId: string | null;
   directAuthorIri: string | null;
 };
@@ -329,6 +369,21 @@ function extractTokenizedFilters(input: string): {
 function parseOmni(raw: string): ParsedOmni {
   const s = (raw ?? "").trim();
 
+  const directPaperIri = extractDirectPaperIri(s);
+  if (directPaperIri) {
+    return {
+      titleQ: "",
+      authorQ: "",
+      yearQ: "",
+      affiliationQ: "",
+      countryQ: "",
+      countryCodes: [],
+      directPaperIri,
+      directRisId: null,
+      directAuthorIri: null,
+    };
+  }
+
   const directRisId = extractRisIdFromAnything(s);
   if (directRisId) {
     return {
@@ -338,6 +393,7 @@ function parseOmni(raw: string): ParsedOmni {
       affiliationQ: "",
       countryQ: "",
       countryCodes: [],
+      directPaperIri: null,
       directRisId,
       directAuthorIri: null,
     };
@@ -353,6 +409,7 @@ function parseOmni(raw: string): ParsedOmni {
       affiliationQ: "",
       countryQ: "",
       countryCodes: [],
+      directPaperIri: null,
       directRisId: null,
       directAuthorIri: iri,
     };
@@ -366,6 +423,7 @@ function parseOmni(raw: string): ParsedOmni {
       affiliationQ: "",
       countryQ: "",
       countryCodes: [],
+      directPaperIri: null,
       directRisId: null,
       directAuthorIri: null,
     };
@@ -409,6 +467,7 @@ function parseOmni(raw: string): ParsedOmni {
     affiliationQ: extracted.affiliationQ.trim(),
     countryQ,
     countryCodes,
+    directPaperIri: null,
     directRisId: null,
     directAuthorIri,
   };
@@ -609,16 +668,16 @@ function buildSearchQuery(args: {
     const authorJoinPattern = buildAuthorJoinPattern(authorQ);
     const affiliationJoinPattern = buildAffiliationJoinPattern(affiliationQ);
     const countryJoinPattern = buildCountryJoinPattern(countryQ, countryCodes);
-    const cursorFilter = cursor
+    const cursorHaving = cursor
       ? `
-          FILTER(
-            (?nameSort > ${escapeSparqlStringLiteral(cursor.nameSort)})
-            ||
-            (
-              ?nameSort = ${escapeSparqlStringLiteral(cursor.nameSort)}
-              && STR(?paper) > ${escapeSparqlStringLiteral(cursor.paper)}
-            )
+        HAVING (
+          (MIN(?nameSort0) > ${escapeSparqlStringLiteral(cursor.nameSort)})
+          ||
+          (
+            MIN(?nameSort0) = ${escapeSparqlStringLiteral(cursor.nameSort)}
+            && STR(?paper) > ${escapeSparqlStringLiteral(cursor.paper)}
           )
+        )
         `
       : "";
     const offsetClause = cursor ? "" : `OFFSET ${offset}`;
@@ -627,28 +686,29 @@ function buildSearchQuery(args: {
     return `${PREFIXES}
     SELECT
       ?paper
+      ?nameSort
       (SAMPLE(?name) AS ?title)
       (SAMPLE(?year0) AS ?year)
-      (SAMPLE(?nameSort) AS ?cursorNameSort)
       (GROUP_CONCAT(DISTINCT ?aNamePick; separator=";") AS ?authors)
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       {
-        SELECT DISTINCT ?paper ?nameSort
+        SELECT ?paper (MIN(?nameSort0) AS ?nameSort)
         WHERE {
-          FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+          ${PAPER_RESOURCE_FILTER}
 
           ${authorIriFilter}
 
           ?paper schema:name ?name .
-          BIND(LCASE(STR(?name)) AS ?nameSort)
-          ${cursorFilter}
+          BIND(LCASE(STR(?name)) AS ?nameSort0)
           ${titleFilter}
           ${yearPattern}
           ${authorJoinPattern}
           ${affiliationJoinPattern}
           ${countryJoinPattern}
         }
+        GROUP BY ?paper
+        ${cursorHaving}
         ORDER BY ?nameSort ?paper
         LIMIT ${limit}
         ${offsetClause}
@@ -667,8 +727,8 @@ function buildSearchQuery(args: {
         }
       }
     }
-    GROUP BY ?paper
-    ORDER BY LCASE(STR(SAMPLE(?name)))
+    GROUP BY ?paper ?nameSort
+    ORDER BY ?nameSort ?paper
     `;
 }
 
@@ -714,7 +774,7 @@ function buildCountQuery(args: {
     return `${PREFIXES}
     SELECT (COUNT(DISTINCT ?paper) AS ?total)
     WHERE {
-      FILTER(STRSTARTS(STR(?paper), "https://dice-research.org/id/publication/ris/"))
+      ${PAPER_RESOURCE_FILTER}
 
       ${authorIriFilter}
 
@@ -730,7 +790,8 @@ function buildCountQuery(args: {
 
 function toPaperId(paperIri: string): string {
   const m = paperIri.match(/\/ris\/(.+?)(?:[?#].*)?$/);
-  return m?.[1] ?? paperIri;
+  if (m?.[1]) return m[1];
+  return paperIri;
 }
 
 function toPersonId(personIri: string): string {
@@ -757,15 +818,16 @@ export async function GET(req: Request) {
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
     
         let rows: SparqlRow[] = [];
         let total = 0;
     
-        if (parsed.directRisId) {
-            const allRows = await sparqlSelect(buildDirectQuery(paperIriFromId(parsed.directRisId)));
+        if (parsed.directPaperIri || parsed.directRisId) {
+            const directPaperIri = parsed.directPaperIri ?? paperIriFromId(parsed.directRisId ?? "");
+            const allRows = await sparqlSelect(buildDirectQuery(directPaperIri));
             total = allRows.length;
             rows = !cursor && effectiveOffset === 0 ? allRows.slice(0, limit) : [];
         } else {
@@ -811,17 +873,15 @@ export async function GET(req: Request) {
             total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
 
+        if (rows.length > 1) rows = [...rows].sort(compareRowsByCursorKey);
+
         const hasNextPage = rows.length > limit;
         const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
         const nextCursor = (() => {
           if (!hasNextPage || pageRows.length === 0) return null;
           const last = pageRows[pageRows.length - 1];
-          const paper = (last.paper?.value ?? "").trim();
-          const nameSort = (
-            last.cursorNameSort?.value ??
-            last.title?.value?.toLowerCase() ??
-            ""
-          ).trim();
+          const paper = rowPaperIri(last);
+          const nameSort = rowNameSort(last);
           if (!paper || !nameSort) return null;
           return encodeSearchCursor({ nameSort, paper });
         })();

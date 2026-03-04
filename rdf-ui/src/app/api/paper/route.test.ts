@@ -39,7 +39,7 @@ describe("GET /api/paper", () => {
   it("extracts DOI URL and deduplicates author affiliations", async () => {
     const paperRows: SparqlRow[] = [
       {
-        paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/123" },
+        paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/123" },
         title: { type: "literal", value: "A Paper" },
         year: { type: "literal", value: "2025" },
         identifiers: { type: "literal", value: "DOI: 10.1000/xyz123|URN:foo" },
@@ -104,7 +104,7 @@ describe("GET /api/paper", () => {
   it("keeps sameAs null without a valid DOI and defaults optional arrays", async () => {
     const paperRows: SparqlRow[] = [
       {
-        paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/321" },
+        paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/321" },
         title: { type: "literal", value: "No DOI Paper" },
         identifiers: { type: "literal", value: "ISBN: 12345|DOI: not-a-valid-doi" },
       },
@@ -137,7 +137,7 @@ describe("GET /api/paper", () => {
   it("backfills affiliation metadata when duplicate affiliation appears later", async () => {
     const paperRows: SparqlRow[] = [
       {
-        paper: { type: "uri", value: "https://dice-research.org/id/publication/ris/654" },
+        paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/654" },
         title: { type: "literal", value: "Affiliation Merge Paper" },
       },
     ];
@@ -180,5 +180,49 @@ describe("GET /api/paper", () => {
       sameAs: "https://ror.org/merge-1",
       countryRaw: "DE",
     });
+  });
+
+  it("accepts a full paper IRI in id", async () => {
+    const paperIri = "http://upbkg.data.dice-research.org/id/publication/abc";
+    mockedSparqlSelect
+      .mockResolvedValueOnce([
+        {
+          paper: { type: "uri", value: paperIri },
+          title: { type: "literal", value: "Direct IRI Paper" },
+        },
+      ] as SparqlRow[])
+      .mockResolvedValueOnce([]);
+
+    const response = await GET(
+      new Request(`http://localhost/api/paper?id=${encodeURIComponent(paperIri)}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.iri).toBe(paperIri);
+    const query = mockedSparqlSelect.mock.calls[0]?.[0] ?? "";
+    expect(query).toContain(`BIND(<${paperIri}> AS ?paper)`);
+  });
+
+  it("accepts a full venue IRI in id", async () => {
+    const venueIri = "http://upbkg.data.dice-research.org/id/venue/d09d070e5ef7";
+    mockedSparqlSelect
+      .mockResolvedValueOnce([
+        {
+          paper: { type: "uri", value: venueIri },
+          title: { type: "literal", value: "Venue Record" },
+        },
+      ] as SparqlRow[])
+      .mockResolvedValueOnce([]);
+
+    const response = await GET(
+      new Request(`http://localhost/api/paper?id=${encodeURIComponent(venueIri)}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.iri).toBe(venueIri);
+    const query = mockedSparqlSelect.mock.calls[0]?.[0] ?? "";
+    expect(query).toContain(`BIND(<${venueIri}> AS ?paper)`);
   });
 });

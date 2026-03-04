@@ -21,14 +21,14 @@ const SEARCH_RESPONSES: Record<string, Record<string, SearchResponse>> = {
       items: [
         {
           id: "1001",
-          iri: "https://dice-research.org/id/publication/ris/1001",
+          iri: "http://upbkg.data.dice-research.org/id/publication/ris/1001",
           title: "Graph First Result",
           year: "2024",
           authorsText: "Jane Doe",
         },
         {
           id: "1002",
-          iri: "https://dice-research.org/id/publication/ris/1002",
+          iri: "http://upbkg.data.dice-research.org/id/publication/ris/1002",
           title: "Graph Second Result",
           year: "2023",
           authorsText: "John Smith",
@@ -41,7 +41,7 @@ const SEARCH_RESPONSES: Record<string, Record<string, SearchResponse>> = {
       items: [
         {
           id: "1003",
-          iri: "https://dice-research.org/id/publication/ris/1003",
+          iri: "http://upbkg.data.dice-research.org/id/publication/ris/1003",
           title: "Graph Third Result",
           year: "2022",
           authorsText: "Alice Jones",
@@ -56,7 +56,7 @@ const SEARCH_RESPONSES: Record<string, Record<string, SearchResponse>> = {
       items: [
         {
           id: "2001",
-          iri: "https://dice-research.org/id/publication/ris/2001",
+          iri: "http://upbkg.data.dice-research.org/id/publication/ris/2001",
           title: "US Filtered Result",
           year: "2025",
           authorsText: "Jane Doe",
@@ -128,7 +128,7 @@ test("search, open details, country filter, load more, and theme persistence", a
       contentType: "application/json",
       body: JSON.stringify({
         id: "1001",
-        iri: "https://dice-research.org/id/publication/ris/1001",
+        iri: "http://upbkg.data.dice-research.org/id/publication/ris/1001",
         title: "Graph First Result",
         year: "2024",
         abstract: "This abstract is for smoke-test validation.",

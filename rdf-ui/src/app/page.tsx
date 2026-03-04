@@ -10,6 +10,9 @@ import UsersByCountryWidget from "@/components/CountryWidget";
 
 const PAGE_SIZE = 25;
 const THEME_STORAGE_KEY = "rdf-ui-theme";
+const PAPER_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
+const PERSON_PATH_REGEX = /\/(?:id\/person|orcid)(?:\/|$)/i;
+const ORGANIZATION_PATH_REGEX = /\/(?:id\/org|ror|openalex_org)(?:\/|$)/i;
 type Theme = "dark" | "light";
 type TopCountriesApiEntry = {
   name?: string | null;
@@ -23,6 +26,17 @@ type TopCountriesApiResponse = {
     rows?: TopCountriesApiEntry[];
   };
 };
+
+function dedupeByIri(items: SearchItem[]): SearchItem[] {
+  const seen = new Set<string>();
+  const out: SearchItem[] = [];
+  for (const item of items) {
+    if (!item?.iri || seen.has(item.iri)) continue;
+    seen.add(item.iri);
+    out.push(item);
+  }
+  return out;
+}
 
 function toErrorMessage(error: unknown, fallback = "Error"): string {
   if (error instanceof Error && error.message) return error.message;
@@ -173,6 +187,40 @@ function parseUrl(input: string): URL | null {
   }
 }
 
+function normalizeIriInput(input: string): string {
+  return (input || "")
+    .trim()
+    .replace(/^<|>$/g, "")
+    .replace(/[)>.,;]+$/, "");
+}
+
+export function toSearchQueryFromIri(input: string): string {
+  const iri = normalizeIriInput(input);
+  if (!iri) return "";
+
+  const parsed = parseUrl(iri);
+  if (!parsed) return iri;
+
+  const path = parsed.pathname;
+  if (PERSON_PATH_REGEX.test(path)) return `a: ${iri}`;
+  if (ORGANIZATION_PATH_REGEX.test(path)) return `aff: ${iri}`;
+  if (PAPER_OR_VENUE_PATH_REGEX.test(path)) return iri;
+  return iri;
+}
+
+export function initialQueryFromLocation(loc: Pick<Location, "search" | "pathname" | "origin">): string {
+  const params = new URLSearchParams(loc.search);
+  const directQ = (params.get("q") ?? "").trim();
+  if (directQ) return directQ;
+
+  const uriParam = (params.get("uri") ?? params.get("iri") ?? "").trim();
+  if (uriParam) return toSearchQueryFromIri(uriParam);
+
+  if (!loc.pathname || loc.pathname === "/" || loc.pathname.startsWith("/api/")) return "";
+  const pathIri = `${loc.origin}${loc.pathname}`;
+  return toSearchQueryFromIri(pathIri);
+}
+
 function isGithubUrl(input: string): boolean {
   const parsed = parseUrl(input);
   if (!parsed) return false;
@@ -258,6 +306,11 @@ export default function HomePage() {
     () => countryRows.map((row, idx) => ({ ...row, color: ccToColor(idx, theme) })),
     [countryRows, theme]
   );
+
+  useEffect(() => {
+    const nextQ = initialQueryFromLocation(window.location);
+    if (nextQ) setQ(nextQ);
+  }, []);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -383,7 +436,7 @@ export default function HomePage() {
       try {
         const j = await fetchSearchPage(null);
         if (!cancelled) {
-          const nextItems = j.items ?? [];
+          const nextItems = dedupeByIri(j.items ?? []);
           const total = Number(j.total) || nextItems.length;
           const next = typeof j.nextCursor === "string" && j.nextCursor ? j.nextCursor : null;
           setItems(nextItems);
