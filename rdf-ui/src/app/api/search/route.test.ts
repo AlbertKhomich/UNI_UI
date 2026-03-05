@@ -294,6 +294,44 @@ describe("GET /api/search", () => {
     expect(countQuery).toContain("VALUES ?directAuthorIri");
   });
 
+  it("returns direct author metadata for direct author IRI token", async () => {
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("VALUES (?author ?rank)")) {
+        return [
+          {
+            author: { type: "uri", value: "http://upbkg.data.dice-research.org/id/author/uni/65716" },
+            name: { type: "literal", value: "Ngonga Axel-Cyrille Ngomo" },
+          },
+        ] as SparqlRow[];
+      }
+
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        return [{ total: { type: "literal", value: "2" } }];
+      }
+
+      return [
+        {
+          paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/6571601" },
+          title: { type: "literal", value: "Knowledge Graph Learning" },
+          year: { type: "literal", value: "2026" },
+          authors: { type: "literal", value: "Ngomo, Ngonga Axel-Cyrille" },
+          authorIris: { type: "literal", value: "http://upbkg.data.dice-research.org/id/person/uni/65716" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const raw = "a: http://upbkg.data.dice-research.org/id/person/uni/65716";
+    const response = await GET(
+      new Request(`http://localhost/api/search?q=${encodeURIComponent(raw)}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(2);
+    expect(body.authorIri).toBe("http://upbkg.data.dice-research.org/id/author/uni/65716");
+    expect(body.authorName).toBe("Ngonga Axel-Cyrille Ngomo");
+  });
+
   it("uses cache within TTL and refreshes after TTL", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));

@@ -15,6 +15,9 @@ const PERSON_PATH_REGEX = /\/(?:id\/person|orcid)(?:\/|$)/i;
 const ORGANIZATION_PATH_REGEX = /\/(?:id\/org|ror|openalex_org)(?:\/|$)/i;
 const CANONICAL_UPBKG_ORIGIN = "http://upbkg.data.dice-research.org";
 const CANONICALIZABLE_RDF_PATH_REGEX = /\/(?:id\/(?:person|org|publication|venue)|orcid|ror|openalex_org)(?:\/|$)/i;
+const AUTHOR_RESOURCE_PATH_REGEX = /^\/id\/(?:person|author)\/(hash|uni)\/([^\/?#]+)$/i;
+const AUTHOR_HOST_VARIANTS = ["upbkg.data.dice-research.org", "dice-research.org"] as const;
+const AUTHOR_SCHEME_VARIANTS = ["http", "https"] as const;
 type Theme = "dark" | "light";
 type TopCountriesApiEntry = {
   name?: string | null;
@@ -206,6 +209,55 @@ function canonicalizeUpbkgIri(input: string): string {
   return `${CANONICAL_UPBKG_ORIGIN}${parsed.pathname}`;
 }
 
+function buildAuthorIriCandidates(input: string): string[] {
+  const iri = canonicalizeUpbkgIri(input);
+  if (!iri) return [];
+
+  const parsed = parseUrl(iri);
+  if (!parsed) return [iri];
+
+  const m = parsed.pathname.match(AUTHOR_RESOURCE_PATH_REGEX);
+  if (!m?.[1] || !m[2]) return [iri];
+
+  const bucket = m[1].toLowerCase();
+  const authorId = m[2];
+  const candidates = new Set<string>([
+    iri,
+    `${parsed.protocol}//${parsed.host}/id/person/${bucket}/${authorId}`,
+    `${parsed.protocol}//${parsed.host}/id/author/${bucket}/${authorId}`,
+  ]);
+
+  for (const scheme of AUTHOR_SCHEME_VARIANTS) {
+    for (const host of AUTHOR_HOST_VARIANTS) {
+      candidates.add(`${scheme}://${host}/id/person/${bucket}/${authorId}`);
+      candidates.add(`${scheme}://${host}/id/author/${bucket}/${authorId}`);
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function assignAuthorNameByIriVariants(
+  target: Record<string, string>,
+  iri: string,
+  name: string
+): void {
+  const trimmedName = (name || "").trim();
+  if (!trimmedName) return;
+
+  for (const candidate of buildAuthorIriCandidates(iri)) {
+    target[candidate] = trimmedName;
+  }
+}
+
+function getKnownAuthorNameByIriVariants(knownAuthorNames: Record<string, string>, iri: string): string {
+  for (const candidate of buildAuthorIriCandidates(iri)) {
+    const name = knownAuthorNames[candidate];
+    if (name) return name;
+  }
+  return "";
+}
+
 export function toSearchQueryFromIri(input: string): string {
   const iri = canonicalizeUpbkgIri(input);
   if (!iri) return "";
@@ -296,9 +348,16 @@ export default function HomePage() {
   const isDark = theme === "dark";
 
   const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
-  const activeAuthorIri = useMemo(() => extractDirectAuthorIri(q), [q]);
+  const activeAuthorIri = useMemo(() => {
+    const iri = extractDirectAuthorIri(q);
+    return iri ? canonicalizeUpbkgIri(iri) : null;
+  }, [q]);
+  const debouncedAuthorIri = useMemo(() => {
+    const iri = extractDirectAuthorIri(dq);
+    return iri ? canonicalizeUpbkgIri(iri) : null;
+  }, [dq]);
   const activeAuthorName = useMemo(
-    () => (activeAuthorIri ? knownAuthorNames[activeAuthorIri] ?? "" : ""),
+    () => (activeAuthorIri ? getKnownAuthorNameByIriVariants(knownAuthorNames, activeAuthorIri) : ""),
     [activeAuthorIri, knownAuthorNames]
   );
   const headingText = activeAuthorIri && activeAuthorName
@@ -455,6 +514,17 @@ export default function HomePage() {
           setSearchTotal(total);
           setNextCursor(next);
           setHasMore(Boolean(next));
+          if (debouncedAuthorIri && typeof j.authorName === "string" && j.authorName.trim()) {
+            const directAuthorName = j.authorName.trim();
+            setKnownAuthorNames((m) => {
+              const nextKnown = { ...m };
+              assignAuthorNameByIriVariants(nextKnown, debouncedAuthorIri, directAuthorName);
+              if (typeof j.authorIri === "string" && j.authorIri.trim()) {
+                assignAuthorNameByIriVariants(nextKnown, j.authorIri, directAuthorName);
+              }
+              return nextKnown;
+            });
+          }
         }
       } catch (error: unknown) {
         if (!cancelled) {
@@ -473,7 +543,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [canSearch, fetchSearchPage]);
+  }, [canSearch, debouncedAuthorIri, fetchSearchPage]);
 
   const loadMore = useCallback(async () => {
     if (!canSearch || loading || loadingMore || !hasMore) return;
@@ -559,7 +629,7 @@ export default function HomePage() {
           for (const a of authors) {
             const iri = typeof a.iri === "string" ? a.iri : "";
             const name = typeof a.name === "string" ? a.name : "";
-            if (iri && name) next[iri] = name;
+            if (iri && name) assignAuthorNameByIriVariants(next, iri, name);
           }
           return next;
         });
@@ -895,7 +965,11 @@ export default function HomePage() {
                                 type="button"
                                 className="hover:underline"
                                 onClick={() => {
-                                  setKnownAuthorNames((m) => ({ ...m, [a.iri]: a.name }));
+                                  setKnownAuthorNames((m) => {
+                                    const next = { ...m };
+                                    assignAuthorNameByIriVariants(next, a.iri, a.name);
+                                    return next;
+                                  });
                                   setQ(`a: ${a.iri}`);
                                 }}
                               >

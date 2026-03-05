@@ -10,6 +10,8 @@ export type SearchResponse = {
     items: SearchItem[];
     total?: number;
     nextCursor?: string | null;
+    authorIri?: string;
+    authorName?: string;
 }
 
 export type PersonWithAffiliations = {

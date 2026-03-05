@@ -30,6 +30,8 @@ type SearchPayload = {
   items: SearchResultItem[];
   total: number;
   nextCursor: string | null;
+  authorIri?: string;
+  authorName?: string;
 };
 
 type SearchCursor = {
@@ -142,14 +144,26 @@ function extractDirectPaperIri(input: string): string | null {
 }
 
 function buildDirectAuthorIriFilter(directAuthorIri: string): string {
+  const candidates = buildDirectAuthorIriCandidates(directAuthorIri);
+  if (candidates.length === 0) return "";
+  if (candidates.length === 1) return `?paper schema:author <${candidates[0]}> .`;
+
+  const values = candidates.map((candidate) => `<${candidate}>`).join(" ");
+  return `
+    VALUES ?directAuthorIri { ${values} }
+    ?paper schema:author ?directAuthorIri .
+  `;
+}
+
+function buildDirectAuthorIriCandidates(directAuthorIri: string): string[] {
   const iri = (directAuthorIri ?? "").trim();
-  if (!iri) return "";
+  if (!iri) return [];
 
   try {
     const parsed = new URL(iri);
     const m = parsed.pathname.match(AUTHOR_PATH_REGEX);
     if (!m?.[1] || !m[2]) {
-      return `?paper schema:author <${iri}> .`;
+      return [iri];
     }
 
     const bucket = m[1].toLowerCase();
@@ -167,15 +181,43 @@ function buildDirectAuthorIriFilter(directAuthorIri: string): string {
       }
     }
 
-    const values = Array.from(candidates)
-      .map((candidate) => `<${candidate}>`)
-      .join(" ");
-    return `
-      VALUES ?directAuthorIri { ${values} }
-      ?paper schema:author ?directAuthorIri .
-    `;
+    return Array.from(candidates);
   } catch {
-    return `?paper schema:author <${iri}> .`;
+    return [iri];
+  }
+}
+
+function buildDirectAuthorNameQuery(directAuthorIri: string): string | null {
+  const candidates = buildDirectAuthorIriCandidates(directAuthorIri);
+  if (candidates.length === 0) return null;
+
+  const values = candidates
+    .map((candidate, idx) => `(<${candidate}> ${idx})`)
+    .join(" ");
+
+  return `${PREFIXES}
+  SELECT ?author ?name
+  WHERE {
+    VALUES (?author ?rank) { ${values} }
+    ?author schema:name ?name .
+  }
+  ORDER BY ?rank
+  LIMIT 1
+  `;
+}
+
+async function resolveDirectAuthorName(directAuthorIri: string): Promise<{ iri: string; name: string } | null> {
+  const q = buildDirectAuthorNameQuery(directAuthorIri);
+  if (!q) return null;
+
+  try {
+    const rows = await sparqlSelect(q);
+    const iri = (rows[0]?.author?.value ?? "").trim();
+    const name = (rows[0]?.name?.value ?? "").trim();
+    if (!iri || !name) return null;
+    return { iri, name };
+  } catch {
+    return null;
   }
 }
 
@@ -858,6 +900,9 @@ export async function GET(req: Request) {
           `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
+        const directAuthorMetaPromise = parsed.directAuthorIri
+          ? resolveDirectAuthorName(parsed.directAuthorIri)
+          : Promise.resolve(null);
     
         let rows: SparqlRow[] = [];
         let total = 0;
@@ -949,8 +994,16 @@ export async function GET(req: Request) {
             };
         })
         .filter((item): item is SearchResultItem => item !== null);
-    
-        const payload = { items, total, nextCursor };
+
+        const directAuthorMeta = await directAuthorMetaPromise;
+        const payload: SearchPayload = {
+          items,
+          total,
+          nextCursor,
+          ...(directAuthorMeta
+            ? { authorIri: directAuthorMeta.iri, authorName: directAuthorMeta.name }
+            : {}),
+        };
         cacheSet(cacheKey, payload);
         return NextResponse.json(payload);
     } catch (error: unknown) {
