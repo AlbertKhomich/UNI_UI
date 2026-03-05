@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
+import { toErrorMessage } from "@/lib/errors";
 import { getCountries } from "@/lib/topCountries";
-
-function errorMessage(error: unknown, fallback: string): string {
-    if (error instanceof Error && error.message) return error.message;
-    if (typeof error === "string" && error) return error;
-    return fallback;
-}
 
 export async function GET() {
     const month = 60 * 60 * 24 * 30;
@@ -19,7 +14,7 @@ export async function GET() {
             });
         } catch (error: unknown) {
             return NextResponse.json(
-                { error: errorMessage(error, "Failed to fetch top countries") },
+                { error: toErrorMessage(error, "Failed to fetch top countries") },
                 { status: 500 }
             );
         }

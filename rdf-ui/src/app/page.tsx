@@ -1,177 +1,25 @@
 "use client";
 
-import { type KeyboardEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Image from "next/image"
-import Link from "next/link"
-import { FaFilePdf, FaGithub } from "react-icons/fa";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { FiMoon, FiSun } from "react-icons/fi";
-import type { PaperDetails, SearchItem, SearchResponse, Row } from "@/lib/types";
+import PaperResultsList from "@/components/PaperResultsList";
+import SearchControls from "@/components/SearchControls";
 import UsersByCountryWidget from "@/components/CountryWidget";
+import { useCountryStats } from "@/hooks/useCountryStats";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useSearchState } from "@/hooks/useSearchState";
+import { useTheme } from "@/hooks/useTheme";
+import {
+  canonicalizeUpbkgIri,
+  extractDirectAuthorIri,
+  getKnownAuthorNameByIriVariants,
+  initialQueryFromLocation,
+  toSearchQueryFromIri,
+} from "@/lib/query";
 
-const PAGE_SIZE = 25;
-const THEME_STORAGE_KEY = "rdf-ui-theme";
-const PAPER_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
-const PERSON_PATH_REGEX = /\/(?:id\/person|orcid)(?:\/|$)/i;
-const ORGANIZATION_PATH_REGEX = /\/(?:id\/org|ror|openalex_org)(?:\/|$)/i;
-const CANONICAL_UPBKG_ORIGIN = "http://upbkg.data.dice-research.org";
-const CANONICALIZABLE_RDF_PATH_REGEX = /\/(?:id\/(?:person|org|publication|venue)|orcid|ror|openalex_org)(?:\/|$)/i;
-const AUTHOR_RESOURCE_PATH_REGEX = /^\/id\/(?:person|author)\/(hash|uni)\/([^\/?#]+)$/i;
-const AUTHOR_HOST_VARIANTS = ["upbkg.data.dice-research.org", "dice-research.org"] as const;
-const AUTHOR_SCHEME_VARIANTS = ["http", "https"] as const;
-type Theme = "dark" | "light";
-type TopCountriesApiEntry = {
-  name?: string | null;
-  value?: number | string | null;
-};
-
-type TopCountriesApiResponse = {
-  error?: string;
-  rows?: {
-    totalPapers?: number | string | null;
-    rows?: TopCountriesApiEntry[];
-  };
-};
-
-function dedupeByIri(items: SearchItem[]): SearchItem[] {
-  const seen = new Set<string>();
-  const out: SearchItem[] = [];
-  for (const item of items) {
-    if (!item?.iri || seen.has(item.iri)) continue;
-    seen.add(item.iri);
-    out.push(item);
-  }
-  return out;
-}
-
-function toErrorMessage(error: unknown, fallback = "Error"): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return fallback;
-}
-
-function bodyErrorMessage(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const candidate = (payload as { error?: unknown }).error;
-  if (typeof candidate !== "string" || !candidate) return null;
-  return candidate;
-}
-
-function ccToFlag(cc: string): string {
-  const code = (cc || "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return "";
-  const A = 0x1f1e6;
-  const first = A + (code.charCodeAt(0) - 65);
-  const second = A + (code.charCodeAt(1) - 65)
-  return String.fromCodePoint(first, second)
-}
-
-function useDebounce<T>(value: T, delayMs = 350) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), delayMs);
-    return () => clearTimeout(t);
-  }, [value, delayMs]);
-  return v;
-}
-
-function cctoName(cc: string, locale: string = "en"): string {
-  const code = (cc || "").trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return code;
-  try {
-    const dn = new Intl.DisplayNames([locale], { type: "region" });
-    return dn.of(code) || code;
-  } catch {
-    return code;
-  }
-}
-
-function normalizeCountryLookup(input: string): string {
-  return (input || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-const COUNTRY_ALIASES: Record<string, string> = {
-  us: "US",
-  usa: "US",
-  "united states": "US",
-  "united states of america": "US",
-  uk: "GB",
-  "united kingdom": "GB",
-  "great britain": "GB",
-  uae: "AE",
-  "south korea": "KR",
-  "north korea": "KP",
-  russia: "RU",
-  "czech republic": "CZ",
-  "ivory coast": "CI",
-};
-
-const COUNTRY_CODE_ALIASES: Record<string, string> = {
-  FX: "FR",
-};
-
-function canonicalizeCountryCode(input: string): string {
-  const code = (input || "").trim().toUpperCase();
-  if (!code) return "";
-  return COUNTRY_CODE_ALIASES[code] ?? code;
-}
-
-const COUNTRY_NAME_TO_CODE: Map<string, string> = (() => {
-  const out = new Map<string, string>();
-  let displayNames: Intl.DisplayNames | null = null;
-  try {
-    displayNames = new Intl.DisplayNames(["en"], { type: "region" });
-  } catch {
-    return out;
-  }
-
-  for (let i = 65; i <= 90; i += 1) {
-    for (let j = 65; j <= 90; j += 1) {
-      const code = `${String.fromCharCode(i)}${String.fromCharCode(j)}`;
-      const name = displayNames.of(code);
-      if (!name || name.toUpperCase() === code) continue;
-      out.set(normalizeCountryLookup(name), code);
-    }
-  }
-
-  return out;
-})();
-
-function toCountryCode(input: string): string {
-  const value = (input || "").trim();
-  if (!value) return "";
-
-  const directCode = value.toUpperCase().match(/\b[A-Z]{2}\b/);
-  if (directCode?.[0]) return canonicalizeCountryCode(directCode[0]);
-
-  const compact = value.toUpperCase().replace(/[^A-Z]/g, "");
-  if (/^[A-Z]{2}$/.test(compact)) return canonicalizeCountryCode(compact);
-
-  const normalized = normalizeCountryLookup(value);
-  if (!normalized) return "";
-
-  const aliased = COUNTRY_ALIASES[normalized];
-  if (aliased) return canonicalizeCountryCode(aliased);
-
-  const fromName = COUNTRY_NAME_TO_CODE.get(normalized);
-  return fromName ? canonicalizeCountryCode(fromName) : "";
-}
-
-function ccToColor(rank: number, theme: Theme): string {
-  const alpha = Math.max(0.25, 1 - rank * 0.18);
-  if (theme === "dark") return `rgba(255,255,255,${alpha})`;
-  return `rgba(30,64,175,${Math.min(0.88, alpha)})`;
-}
-
-function extractDirectAuthorIri(input: string): string | null {
-  const m = input.match(/^\s*(?:a|author)\s*:\s*(<)?(https?:\/\/\S+?)\1?\s*$/i);
-  if (!m?.[2]) return null;
-  return m[2].trim().replace(/[)>.,;]+$/, "");
-}
+export { initialQueryFromLocation, toSearchQueryFromIri };
 
 function toPossessive(name: string): string {
   const n = name.trim();
@@ -180,189 +28,59 @@ function toPossessive(name: string): string {
   return `${n}'s`;
 }
 
-function stripHtml(input: string): string {
-  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function parseUrl(input: string): URL | null {
-  try {
-    return new URL(input);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeIriInput(input: string): string {
-  return (input || "")
-    .trim()
-    .replace(/^<|>$/g, "")
-    .replace(/[)>.,;]+$/, "");
-}
-
-function canonicalizeUpbkgIri(input: string): string {
-  const raw = normalizeIriInput(input);
-  if (!raw) return "";
-
-  const parsed = parseUrl(raw);
-  if (!parsed) return raw;
-  if (!CANONICALIZABLE_RDF_PATH_REGEX.test(parsed.pathname)) return raw;
-  return `${CANONICAL_UPBKG_ORIGIN}${parsed.pathname}`;
-}
-
-function buildAuthorIriCandidates(input: string): string[] {
-  const iri = canonicalizeUpbkgIri(input);
-  if (!iri) return [];
-
-  const parsed = parseUrl(iri);
-  if (!parsed) return [iri];
-
-  const m = parsed.pathname.match(AUTHOR_RESOURCE_PATH_REGEX);
-  if (!m?.[1] || !m[2]) return [iri];
-
-  const bucket = m[1].toLowerCase();
-  const authorId = m[2];
-  const candidates = new Set<string>([
-    iri,
-    `${parsed.protocol}//${parsed.host}/id/person/${bucket}/${authorId}`,
-    `${parsed.protocol}//${parsed.host}/id/author/${bucket}/${authorId}`,
-  ]);
-
-  for (const scheme of AUTHOR_SCHEME_VARIANTS) {
-    for (const host of AUTHOR_HOST_VARIANTS) {
-      candidates.add(`${scheme}://${host}/id/person/${bucket}/${authorId}`);
-      candidates.add(`${scheme}://${host}/id/author/${bucket}/${authorId}`);
-    }
-  }
-
-  return Array.from(candidates);
-}
-
-function assignAuthorNameByIriVariants(
-  target: Record<string, string>,
-  iri: string,
-  name: string
-): void {
-  const trimmedName = (name || "").trim();
-  if (!trimmedName) return;
-
-  for (const candidate of buildAuthorIriCandidates(iri)) {
-    target[candidate] = trimmedName;
-  }
-}
-
-function getKnownAuthorNameByIriVariants(knownAuthorNames: Record<string, string>, iri: string): string {
-  for (const candidate of buildAuthorIriCandidates(iri)) {
-    const name = knownAuthorNames[candidate];
-    if (name) return name;
-  }
-  return "";
-}
-
-export function toSearchQueryFromIri(input: string): string {
-  const iri = canonicalizeUpbkgIri(input);
-  if (!iri) return "";
-
-  const parsed = parseUrl(iri);
-  if (!parsed) return iri;
-
-  const path = parsed.pathname;
-  if (PERSON_PATH_REGEX.test(path)) return `a: ${iri}`;
-  if (ORGANIZATION_PATH_REGEX.test(path)) return `aff: ${iri}`;
-  if (PAPER_OR_VENUE_PATH_REGEX.test(path)) return iri;
-  return iri;
-}
-
-export function initialQueryFromLocation(loc: Pick<Location, "search" | "pathname" | "origin">): string {
-  const params = new URLSearchParams(loc.search);
-  const directQ = (params.get("q") ?? "").trim();
-  if (directQ) return directQ;
-
-  const uriParam = (params.get("uri") ?? params.get("iri") ?? "").trim();
-  if (uriParam) return toSearchQueryFromIri(uriParam);
-
-  if (!loc.pathname || loc.pathname === "/" || loc.pathname.startsWith("/api/")) return "";
-  const pathIri = `${loc.origin}${loc.pathname}`;
-  return toSearchQueryFromIri(pathIri);
-}
-
-function isGithubUrl(input: string): boolean {
-  const parsed = parseUrl(input);
-  if (!parsed) return false;
-  return parsed.hostname.toLowerCase() === "github.com" || parsed.hostname.toLowerCase().endsWith(".github.com");
-}
-
-async function toFriendlyHttpError(r: Response, fallback: string): Promise<string> {
-  if (r.status === 504) {
-    return "The search timed out on the server. Please narrow your query and try again.";
-  }
-
-  if (r.status === 502 || r.status === 503) {
-    return "The search service is temporarily unavailable. Please try again in a moment.";
-  }
-
-  const ct = r.headers.get("content-type") ?? "";
-
-  try {
-    if (ct.includes("application/json")) {
-      const j = await r.json();
-      const msg = typeof j?.error === "string" ? j.error : "";
-      if (msg) return msg;
-    } else {
-      const text = await r.text();
-      const clean = stripHtml(text);
-      if (clean) return clean.slice(0, 220);
-    }
-  } catch {
-    // Ignore body parsing failures and use fallback below.
-  }
-
-  return `${fallback} (HTTP ${r.status})`;
-}
-
 export default function HomePage() {
   const [q, setQ] = useState("");
   const dq = useDebounce(q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [items, setItems] = useState<SearchItem[]>([]);
-  const [searchTotal, setSearchTotal] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
-  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
-  const [details, setDetails] = useState<Record<string, PaperDetails>>({});
-  const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
-  const [detailsErr, setDetailsErr] = useState<Record<string, string>>({});
+  const { isDark, setTheme, theme } = useTheme();
+  const {
+    countryErr,
+    countryLoading,
+    countryRowsWithColors,
+    totalPapers,
+  } = useCountryStats(theme);
 
-  const [countryRows, setCountryRows] = useState<Row[]>([]);
-  const [countryLoading, setCountryLoading] = useState(false);
-  const [countryErr, setCountryErr] = useState<string | null>(null);
-
-  const [totalPapers, setTotalPapers] = useState<number>(0);
-  const [knownAuthorNames, setKnownAuthorNames] = useState<Record<string, string>>({});
-  const [theme, setTheme] = useState<Theme>("dark");
-  const [themeReady, setThemeReady] = useState(false);
-  const isDark = theme === "dark";
-
-  const canSearch = useMemo(() => dq.trim().length >= 3, [dq]);
   const activeAuthorIri = useMemo(() => {
     const iri = extractDirectAuthorIri(q);
     return iri ? canonicalizeUpbkgIri(iri) : null;
   }, [q]);
+
   const debouncedAuthorIri = useMemo(() => {
     const iri = extractDirectAuthorIri(dq);
     return iri ? canonicalizeUpbkgIri(iri) : null;
   }, [dq]);
+
+  const {
+    canSearch,
+    details,
+    detailsErr,
+    detailsLoading,
+    err,
+    hasMore,
+    items,
+    knownAuthorNames,
+    loadMoreRef,
+    loading,
+    loadingMore,
+    openIds,
+    rememberAuthorName,
+    searchTotal,
+    togglePaperOpen,
+  } = useSearchState({
+    debouncedQuery: dq,
+    debouncedAuthorIri,
+  });
+
   const activeAuthorName = useMemo(
     () => (activeAuthorIri ? getKnownAuthorNameByIriVariants(knownAuthorNames, activeAuthorIri) : ""),
-    [activeAuthorIri, knownAuthorNames]
+    [activeAuthorIri, knownAuthorNames],
   );
+
   const headingText = activeAuthorIri && activeAuthorName
     ? `${toPossessive(activeAuthorName)} Papers | Total: ${searchTotal}`
     : "Papers";
+
   const subtleTextClass = isDark ? "text-gray-400" : "text-gray-500";
   const searchInputClass = isDark
     ? "w-full rounded-xl border border-gray-500 bg-transparent px-3 py-3 text-base outline-none focus:border-gray-300"
@@ -373,297 +91,42 @@ export default function HomePage() {
   const detailsClass = isDark
     ? "mt-3 border-t border-gray-600 pt-3 text-sm text-gray-300"
     : "mt-3 border-t border-gray-200 pt-3 text-sm text-gray-700";
-  const countryRowsWithColors = useMemo(
-    () => countryRows.map((row, idx) => ({ ...row, color: ccToColor(idx, theme) })),
-    [countryRows, theme]
-  );
 
   useEffect(() => {
     const nextQ = initialQueryFromLocation(window.location);
-    if (nextQ) setQ(nextQ);
+    if (!nextQ) return;
+    const rafId = window.requestAnimationFrame(() => setQ(nextQ));
+    return () => window.cancelAnimationFrame(rafId);
   }, []);
 
-  useEffect(() => {
-    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
-      setThemeReady(true);
-      return;
-    }
-    setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    setThemeReady(true);
-  }, []);
+  function focusSearchInput(cursorPos: number): void {
+    requestAnimationFrame(() => {
+      const element = searchInputRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(cursorPos, cursorPos);
+    });
+  }
 
-  useEffect(() => {
-    if (!themeReady) return;
-    const root = document.documentElement;
-    root.classList.remove("dark", "light");
-    root.classList.add(theme);
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme, themeReady]);
-
-  function applySearchPrefix(prefix: "a:" | "y:" | "aff:" | "c:") {
+  function applySearchPrefix(prefix: "a:" | "y:" | "aff:" | "c:"): void {
     const current = q.trimEnd();
     const separator = current.length > 0 ? " " : "";
     const next = `${current}${separator}${prefix} `;
-    const cursorPos = next.length;
     setQ(next);
-
-    requestAnimationFrame(() => {
-      const el = searchInputRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(cursorPos, cursorPos);
-    });
+    focusSearchInput(next.length);
   }
 
-  const fetchSearchPage = useCallback(async (cursor: string | null): Promise<SearchResponse> => {
-    const params = new URLSearchParams({
-      q: dq.trim(),
-      limit: String(PAGE_SIZE),
-    });
-    if (cursor) params.set("cursor", cursor);
-
-    const r = await fetch(`/api/search?${params.toString()}`);
-    if (!r.ok) throw new Error(await toFriendlyHttpError(r, "Search failed"));
-
-    const ct = r.headers.get("content-type") ?? "";
-    if (!ct.includes("application/json")) {
-      throw new Error("Search failed: unexpected response format.");
-    }
-
-    return (await r.json()) as SearchResponse;
-  }, [dq]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCountries() {
-      setCountryLoading(true);
-      setCountryErr(null);
-      try {
-        const r = await fetch(`/api/top-countries`);
-        const ct = r.headers.get("content-type") ?? "";
-
-        let payload: unknown = null;
-        if (ct.includes("application/json")) payload = await r.json() 
-        else throw new Error((await r.text()) || `HTTP ${r.status}`);
-
-        if (!r.ok) throw new Error(bodyErrorMessage(payload) ?? "Failed to load countries");
-        const data = (payload as TopCountriesApiResponse) ?? {};
-        const mappedRaw: Array<Row | null> = (data.rows?.rows ?? [])
-          .map((x: TopCountriesApiEntry) => {
-            const cc = String(x.name ?? "").trim().toUpperCase();
-            if (!/^[A-Z]{2}$/.test(cc)) return null;
-
-            const papers = Number(x.value) || 0;
-            const countryName = cctoName(cc, "en");
-            const flag = ccToFlag(cc);
-            const labelWithCode = countryName && countryName !== cc
-              ? `${countryName} (${cc})`
-              : cc;
-            const label = flag ? `${flag} ${labelWithCode}` : labelWithCode;
-
-            return { name: label, value: papers, code: cc };
-          });
-        const mapped: Row[] = mappedRaw.filter((row): row is Row => row !== null);
-
-        if (!cancelled) {
-          setCountryRows(mapped);
-          setTotalPapers(Number(data.rows?.totalPapers) || 0);
-        };
-      } catch (error: unknown) {
-        if (!cancelled) setCountryErr(toErrorMessage(error));
-      } finally {
-        if (!cancelled) setCountryLoading(false);
-      }
-    }
-
-    loadCountries();
-
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setOpenIds(new Set());
-      setDetails({});
-      setDetailsErr({});
-      setDetailsLoading({});
-
-      if (!canSearch) {
-        setItems([]);
-        setSearchTotal(0);
-        setNextCursor(null);
-        setHasMore(false);
-        setErr(null);
-        return;
-      }
-      setLoading(true);
-      setLoadingMore(false);
-      setErr(null);
-      try {
-        const j = await fetchSearchPage(null);
-        if (!cancelled) {
-          const nextItems = dedupeByIri(j.items ?? []);
-          const total = Number(j.total) || nextItems.length;
-          const next = typeof j.nextCursor === "string" && j.nextCursor ? j.nextCursor : null;
-          setItems(nextItems);
-          setSearchTotal(total);
-          setNextCursor(next);
-          setHasMore(Boolean(next));
-          if (debouncedAuthorIri && typeof j.authorName === "string" && j.authorName.trim()) {
-            const directAuthorName = j.authorName.trim();
-            setKnownAuthorNames((m) => {
-              const nextKnown = { ...m };
-              assignAuthorNameByIriVariants(nextKnown, debouncedAuthorIri, directAuthorName);
-              if (typeof j.authorIri === "string" && j.authorIri.trim()) {
-                assignAuthorNameByIriVariants(nextKnown, j.authorIri, directAuthorName);
-              }
-              return nextKnown;
-            });
-          }
-        }
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setErr(toErrorMessage(error));
-          setItems([]);
-          setSearchTotal(0);
-          setNextCursor(null);
-          setHasMore(false);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [canSearch, debouncedAuthorIri, fetchSearchPage]);
-
-  const loadMore = useCallback(async () => {
-    if (!canSearch || loading || loadingMore || !hasMore) return;
-    if (!nextCursor) return;
-
-    setLoadingMore(true);
-    try {
-      const j = await fetchSearchPage(nextCursor);
-      const incoming = j.items ?? [];
-      const total = Number(j.total) || searchTotal;
-      const next = typeof j.nextCursor === "string" && j.nextCursor ? j.nextCursor : null;
-
-      setItems((prev) => {
-        const seen = new Set(prev.map((x) => x.iri));
-        const merged = [...prev];
-        for (const it of incoming) {
-          if (!seen.has(it.iri)) {
-            merged.push(it);
-            seen.add(it.iri);
-          }
-        }
-        return merged;
-      });
-
-      setSearchTotal(total);
-      setNextCursor(next);
-      setHasMore(Boolean(next));
-    } catch (error: unknown) {
-      setErr(toErrorMessage(error));
-      setHasMore(false);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [canSearch, loading, loadingMore, hasMore, nextCursor, fetchSearchPage, searchTotal]);
-
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el || !canSearch) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void loadMore();
-        }
-      },
-      { rootMargin: "220px 0px" }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [canSearch, loadMore]);
-
-  async function ensureDetails(id: string) {
-    if (details[id] || detailsLoading[id]) return;
-
-    setDetailsLoading((m) => ({ ...m, [id]: true }));
-    setDetailsErr((m) => ({ ...m, [id]: ""}));
-
-    try {
-      const r = await fetch(`/api/paper?id=${encodeURIComponent(id)}`);
-      const ct = r.headers.get("content-type") ?? "";
-
-      let payload: unknown = null;
-      if (ct.includes("application/json")) {
-        payload = await r.json();
-      } else {
-        const text = await r.text();
-        throw new Error(text || `HTTP ${r.status}`);
-      }
-
-      if (!r.ok) throw new Error(bodyErrorMessage(payload) ?? "Failed to load paper");
-      if (!payload || typeof payload !== "object") {
-        throw new Error("Failed to load paper");
-      }
-
-      const detailsPayload = payload as PaperDetails;
-      setDetails((m) => ({ ...m, [id]: detailsPayload }));
-
-      const authors = Array.isArray(detailsPayload.authorsDetailed) ? detailsPayload.authorsDetailed : [];
-      if (authors.length > 0) {
-        setKnownAuthorNames((m) => {
-          const next = { ...m };
-          for (const a of authors) {
-            const iri = typeof a.iri === "string" ? a.iri : "";
-            const name = typeof a.name === "string" ? a.name : "";
-            if (iri && name) assignAuthorNameByIriVariants(next, iri, name);
-          }
-          return next;
-        });
-      }
-    } catch (error: unknown) {
-      setDetailsErr((m) => ({ ...m, [id]: toErrorMessage(error) }));
-    } finally {
-      setDetailsLoading((m) => ({ ...m, [id]: false }));
-    }
+  function handleCountryClick(countryCode: string): void {
+    const code = (countryCode || "").trim().toUpperCase();
+    if (!code) return;
+    const next = `c: ${code}`;
+    setQ(next);
+    focusSearchInput(next.length);
   }
 
-  function togglePaperOpen(id: string) {
-    const willOpen = !openIds.has(id);
-
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-    if (willOpen) {
-      void ensureDetails(id);
-    }
-  }
-
-  function shouldSkipRowToggle(event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>): boolean {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest("a,button,input,textarea,select,label,[contenteditable='true']")) {
-      return true;
-    }
-
-    const selection = window.getSelection();
-    return Boolean(selection && !selection.isCollapsed && selection.toString().trim().length > 0);
+  function handleAuthorSelect(authorIri: string, authorName: string): void {
+    rememberAuthorName(authorIri, authorName);
+    setQ(`a: ${authorIri}`);
   }
 
   return (
@@ -707,18 +170,7 @@ export default function HomePage() {
           rows={countryRowsWithColors}
           theme={theme}
           totalOverride={totalPapers}
-          onCountryClick={(countryCode) => {
-            const code = (countryCode || "").trim().toUpperCase();
-            if (!code) return;
-            const next = `c: ${code}`;
-            setQ(next);
-            requestAnimationFrame(() => {
-              const el = searchInputRef.current;
-              if (!el) return;
-              el.focus();
-              el.setSelectionRange(next.length, next.length);
-            });
-          }}
+          onCountryClick={handleCountryClick}
         />
 
         {countryLoading ? (
@@ -728,335 +180,45 @@ export default function HomePage() {
 
       <h1 className="mb-3 text-[26px] font-semibold">{headingText}</h1>
 
-      <input 
-        ref={searchInputRef}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search paper title... (a:, y:, aff:, c:)"
-        className={searchInputClass}
+      <SearchControls
+        canSearch={canSearch}
+        err={err}
+        hasItems={items.length > 0}
+        loading={loading}
+        onApplyPrefix={applySearchPrefix}
+        onQueryChange={setQ}
+        prefixButtonClass={prefixButtonClass}
+        query={q}
+        searchInputClass={searchInputClass}
+        searchInputRef={searchInputRef}
       />
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          className={prefixButtonClass}
-          onClick={() => applySearchPrefix("a:")}
-        >
-          author
-        </button>
-        <button
-          type="button"
-          className={prefixButtonClass}
-          onClick={() => applySearchPrefix("y:")}
-        >
-          year
-        </button>
-        <button
-          type="button"
-          className={prefixButtonClass}
-          onClick={() => applySearchPrefix("aff:")}
-        >
-          affiliation
-        </button>
-        <button
-          type="button"
-          className={prefixButtonClass}
-          onClick={() => applySearchPrefix("c:")}
-        >
-          country
-        </button>
-      </div>
 
-      <div className="mt-3 min-h-6">
-        {loading && <span>Searching...</span>}
-        {err && <span className="text-red-600">{err}</span>}
-        {!loading && !err && canSearch && items.length === 0 && <span>No results.</span>}
-      </div>
-
-      <ul className="mt-4 space-y-2">
-        {items.map((it) => {
-          const isOpen = openIds.has(it.id);
-          const d = details[it.id];
-          const keywords = d?.keywords ?? [];
-          const fields = d?.fields ?? [];
-          const subfields = d?.subfields ?? [];
-          const loadingD = !!detailsLoading[it.id];
-          const errD = detailsErr[it.id];
-          const whereParts: string[] = [];
-          if (d?.volume) whereParts.push(`Vol. ${d.volume}`);
-          if (d?.issue) whereParts.push(`Issue ${d.issue}`);
-
-          const pages = 
-            d?.pageStart && d?.pageEnd ? `pp. ${d.pageStart}-${d.pageEnd}`
-            : d?.pageStart ? `p. ${d.pageStart}`
-            : d?.pageEnd ? `p. ${d.pageEnd}`
-            : null;
-          const pdfUrls = Array.from(
-            new Set(
-              (d?.urls ?? [])
-                .map((url) => url.trim())
-                .filter(Boolean)
-            )
-          );
-          const repositoryUrls = Array.from(
-            new Set(
-              (d?.codeRepositories ?? [])
-                .map((url) => url.trim())
-                .filter(Boolean)
-            )
-          );
-          const githubUrls = repositoryUrls.filter(isGithubUrl);
-          const otherRepositoryUrls = repositoryUrls.filter((url) => !isGithubUrl(url));
-
-          if (pages) whereParts.push(pages);
-
-          return (
-          <li 
-            key={it.iri} 
-            className={`rounded-xl border p-4 transition ${
-              isDark
-                ? isOpen ? "border-gray-500" : "border-gray-700"
-                : isOpen ? "border-gray-400" : "border-gray-200"
-            }`}
-          >
-            <div
-              className="flex cursor-pointer items-start justify-between gap-3"
-              role="button"
-              tabIndex={0}
-              aria-expanded={isOpen}
-              onClick={(event) => {
-                if (shouldSkipRowToggle(event)) return;
-                togglePaperOpen(it.id);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                if (shouldSkipRowToggle(event)) return;
-                togglePaperOpen(it.id);
-              }}
-            >
-              <div className="min-w-0 flex-1 select-text">
-                <div className="break-words text-[17px] font-semibold">
-                {it.title || it.id}
-                </div>
-                <div className={isDark ? "mt-1.5 text-sm text-gray-300" : "mt-1.5 text-sm text-gray-600"}>
-                  <span>{it.year ?? "—"}</span>
-                  <span className="mx-2">·</span>
-                  <span>{it.authorsText || "Authors: —"}</span>
-                </div>
-              </div>
-              <span
-                className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
-                  isDark
-                    ? "border-gray-500 text-gray-100 hover:bg-gray-800"
-                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                }`}
-                aria-hidden="true"
-              >
-                {isOpen ? "Hide" : "Details"}
-              </span>
-            </div>
-            
-            {isOpen && (
-              <div className={detailsClass}>
-                {loadingD && <div>Loading details...</div>}
-                {errD && <div className="text-red-600">{errD}</div>}
-
-                {d && !loadingD && !errD && (
-                  <div className="space-y-2">
-                    {d.subtitle && (
-                      <div>
-                        <span className="font-medium">Subtitle:</span> {d.subtitle}
-                      </div>
-                    )}
-
-                    {d.isPartOfNames?.[0] && (
-                      <div>
-                        <span className="font-medium">Journal:</span> {d.isPartOfNames[0]}
-                      </div>
-                    )}
-
-                    {whereParts.length > 0 && (
-                      <div>
-                        <span className="font-medium">Where:</span> {whereParts.join(", ")}
-                      </div>
-                    )}
-
-                    {keywords.length > 0 && (
-                      <div>
-                        <span className="font-medium">Keywords:</span>{" "}
-                        {keywords.slice(0, 12).join(", ")}
-                      </div>
-                    )}
-                    {fields.length > 0 && (
-                      <div>
-                        <span className="font-medium">Fields:</span>{" "}
-                        {fields.slice(0, 12).join(", ")}
-                      </div>
-                    )}
-                    {subfields.length > 0 && (
-                      <div>
-                        <span className="font-medium">Subfields:</span>{" "}
-                        {subfields.slice(0, 12).join(", ")}
-                      </div>
-                    )}
-
-                    {d.abstract && (
-                      <div className={isDark ? "text-gray-400" : "text-gray-600"}>
-                        <span className="font-medium">Abstract:</span>{" "}
-                        <span className={isDark ? "mt-1 block line-clamp-4 text-gray-200" : "mt-1 block line-clamp-4 text-gray-700"}>
-                          {d.abstract}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
-                      {d.sameAs && (
-                        <a className="underline" href={d.sameAs} target="_blank" rel="noreferrer">
-                          DOI
-                        </a>
-                      )}
-                      {githubUrls.map((githubUrl) => (
-                        <a
-                          key={githubUrl}
-                          className="inline-flex items-center gap-1.5 underline"
-                          href={githubUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="GitHub repository"
-                          title="GitHub repository"
-                        >
-                          <FaGithub />
-                          <span>GitHub</span>
-                        </a>
-                      ))}
-                      {otherRepositoryUrls.map((repoUrl, idx) => (
-                        <a
-                          key={repoUrl}
-                          className="underline"
-                          href={repoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {otherRepositoryUrls.length > 1 ? `Repository ${idx + 1}` : "Repository"}
-                        </a>
-                      ))}
-                      {pdfUrls.map((pdfUrl, idx) => (
-                        <a
-                          key={pdfUrl}
-                          className="inline-flex items-center gap-1.5 underline"
-                          href={pdfUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label="PDF file"
-                          title="PDF file"
-                        >
-                          <FaFilePdf />
-                          <span>{pdfUrls.length > 1 ? `PDF ${idx + 1}` : "PDF"}</span>
-                        </a>
-                      ))}
-                    </div>
-                    <div>
-                      <span className="font-medium">Authors:</span>
-                      <ul className="mt-1 space-y-1">
-                        {d.authorsDetailed?.map((a) => (
-                          <li key={a.iri}>
-                            <div className={isDark ? "text-gray-200" : "text-gray-800"}>
-                              <button
-                                type="button"
-                                className="hover:underline"
-                                onClick={() => {
-                                  setKnownAuthorNames((m) => {
-                                    const next = { ...m };
-                                    assignAuthorNameByIriVariants(next, a.iri, a.name);
-                                    return next;
-                                  });
-                                  setQ(`a: ${a.iri}`);
-                                }}
-                              >
-                                {a.name}
-                              </button>
-                              {a.orcid ? (
-                                <a
-                                  href={a.orcid}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="ml-2 inline-flex align-middle"
-                                  aria-label={`${a.name} ORCID`}
-                                  title="ORCID"
-                                >
-                                  <Image
-                                    src="/orcid2.png"
-                                    alt="ORCID"
-                                    width={14}
-                                    height={14}
-                                  />
-                                </a>
-                              ) : null}
-                            </div>
-                            {a.affiliations.length > 0 && (
-                              <div className={isDark ? "text-xs text-gray-400" : "text-xs text-gray-500"}>
-                                {a.affiliations.map((aff, i) => {
-                                  const ccRaw = (aff.countryRaw ?? "").trim();
-                                  const ccCode = toCountryCode(ccRaw);
-                                  const flag = ccCode ? ccToFlag(ccCode) : "";
-                                  const countryTitle = ccCode
-                                    ? `${cctoName(ccCode, "en")} (${ccCode})`
-                                    : ccRaw;
-                                  const affHref = (aff.sameAs ?? "").toLowerCase().includes("ror.org")
-                                    ? aff.sameAs
-                                    : undefined;
-                                  return (
-                                    <span key={`${a.iri}-aff-${i}`}>
-                                      <span title={aff.name}>
-                                        {affHref ? (
-                                          <a
-                                            href={affHref}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                          >
-                                            {aff.name}
-                                          </a>
-                                        ) : (
-                                          <span>{aff.name}</span>
-                                        )}
-                                      </span>
-                                      {countryTitle ? (
-                                        <span className="ml-1" title={countryTitle}>
-                                          {flag || countryTitle}
-                                        </span>
-                                      ) : null}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </li>
-          );
-        })}
-      </ul>
-      {canSearch && items.length > 0 ? (
-        <div ref={loadMoreRef} className={`mt-3 min-h-6 text-sm ${subtleTextClass}`}>
-          {loadingMore ? "Loading more..." : hasMore ? "Scroll to load more" : "End of results."}
-        </div>
-      ) : null}
+      <PaperResultsList
+        canSearch={canSearch}
+        details={details}
+        detailsClass={detailsClass}
+        detailsErr={detailsErr}
+        detailsLoading={detailsLoading}
+        hasMore={hasMore}
+        isDark={isDark}
+        items={items}
+        loadMoreRef={loadMoreRef}
+        loadingMore={loadingMore}
+        onSelectAuthor={handleAuthorSelect}
+        onTogglePaperOpen={togglePaperOpen}
+        openIds={openIds}
+        subtleTextClass={subtleTextClass}
+      />
 
       <div className="mt-18 flex items-center justify-center">
-        <Link 
-          href="https://dice-research.org/" 
-          aria-label="Dice research group" 
-          rel="noreferrer" 
+        <Link
+          href="https://dice-research.org/"
+          aria-label="Dice research group"
+          rel="noreferrer"
           target="_blank"
         >
           <Image
-            src="/logo.svg" 
+            src="/logo.svg"
             alt="Dice group"
             width={110}
             height={55}
@@ -1066,5 +228,4 @@ export default function HomePage() {
       </div>
     </main>
   );
-
 }

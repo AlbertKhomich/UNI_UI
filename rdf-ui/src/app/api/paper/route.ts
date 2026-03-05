@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { toErrorMessage } from "@/lib/errors";
 import { sparqlSelect } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
+import { paperIriFromId } from "@/lib/papers";
 import { SparqlRow } from "@/lib/sparql";
 import { Aff } from "@/lib/types";
 
@@ -9,12 +11,6 @@ PREFIX schema: <https://schema.org/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX dcterms: <http://purl.org/dc/terms/>
 `;
-
-function paperIriFromId(id: string) {
-  const clean = (id ?? "").trim().replace(/^\/+/, "").replace(/[)>.,;]+$/, "");
-  if (/^https?:\/\//i.test(clean)) return clean;
-  return `http://upbkg.data.dice-research.org/id/publication/ris/${clean}`;
-}
 
 function extractDoiFromIdentifier(s: string): string | null {
   const t = (s ?? "").trim();
@@ -28,12 +24,6 @@ function extractDoiFromIdentifier(s: string): string | null {
 
 function doiToUrl(doi: string): string {
   return `https://doi.org/${doi}`;
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return fallback;
 }
 
 export async function GET(req: Request) {
@@ -259,6 +249,6 @@ export async function GET(req: Request) {
             authorsDetailed,
         });
     } catch (error: unknown) {
-        return NextResponse.json({ error: errorMessage(error, "Unknown error") }, { status: 500 });
+        return NextResponse.json({ error: toErrorMessage(error, "Unknown error") }, { status: 500 });
     }
 }

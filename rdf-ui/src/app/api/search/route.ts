@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server";
+import {
+  buildCountryIndex,
+  canonicalizeCountryCode,
+  COUNTRY_ALIASES,
+  COUNTRY_CODE_ALIASES,
+  normalizeCountryLookup,
+} from "@/lib/country";
+import { toErrorMessage } from "@/lib/errors";
 import { escapeSparqlStringLiteral, sparqlSelect, SparqlRow } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
+import { paperIriFromId } from "@/lib/papers";
+import { buildAuthorIriCandidates, extractDirectAuthorIri } from "@/lib/query";
 
 const PREFIXES = `
 PREFIX schema: <https://schema.org/>
 `;
 const PAPER_RESOURCE_FILTER = `FILTER(REGEX(STR(?paper), "/id/(publication|venue)(/|$)"))`;
 const PUBLICATION_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
-const AUTHOR_PATH_REGEX = /^\/id\/(?:person|author)\/(hash|uni)\/([^\/?#]+)$/i;
-const AUTHOR_HOST_VARIANTS = ["upbkg.data.dice-research.org", "dice-research.org"] as const;
-const AUTHOR_SCHEME_VARIANTS = ["http", "https"] as const;
 
 const CACHE_TTL_MS = 60_000;
 type SearchAuthorRef = {
@@ -56,12 +63,6 @@ function cacheSet(key: string, value: SearchPayload) {
     cache.set(key, { ts: Date.now(), value });
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return fallback;
-}
-
 function rowNameSort(row: SparqlRow): string {
   return (
     row.nameSort?.value ??
@@ -79,12 +80,6 @@ function compareRowsByCursorKey(a: SparqlRow, b: SparqlRow): number {
   const nameCmp = rowNameSort(a).localeCompare(rowNameSort(b));
   if (nameCmp !== 0) return nameCmp;
   return rowPaperIri(a).localeCompare(rowPaperIri(b));
-}
-
-function paperIriFromId(id: string) {
-  const clean = (id ?? "").trim().replace(/^\/+/, "").replace(/[)>.,;]+$/, "");
-  if (/^https?:\/\//i.test(clean)) return clean;
-  return `http://upbkg.data.dice-research.org/id/publication/ris/${clean}`;
 }
 
 function encodeSearchCursor(cursor: SearchCursor): string {
@@ -144,7 +139,7 @@ function extractDirectPaperIri(input: string): string | null {
 }
 
 function buildDirectAuthorIriFilter(directAuthorIri: string): string {
-  const candidates = buildDirectAuthorIriCandidates(directAuthorIri);
+  const candidates = buildAuthorIriCandidates(directAuthorIri);
   if (candidates.length === 0) return "";
   if (candidates.length === 1) return `?paper schema:author <${candidates[0]}> .`;
 
@@ -155,40 +150,8 @@ function buildDirectAuthorIriFilter(directAuthorIri: string): string {
   `;
 }
 
-function buildDirectAuthorIriCandidates(directAuthorIri: string): string[] {
-  const iri = (directAuthorIri ?? "").trim();
-  if (!iri) return [];
-
-  try {
-    const parsed = new URL(iri);
-    const m = parsed.pathname.match(AUTHOR_PATH_REGEX);
-    if (!m?.[1] || !m[2]) {
-      return [iri];
-    }
-
-    const bucket = m[1].toLowerCase();
-    const authorId = m[2];
-    const candidates = new Set<string>([
-      iri,
-      `${parsed.protocol}//${parsed.host}/id/person/${bucket}/${authorId}`,
-      `${parsed.protocol}//${parsed.host}/id/author/${bucket}/${authorId}`,
-    ]);
-
-    for (const scheme of AUTHOR_SCHEME_VARIANTS) {
-      for (const host of AUTHOR_HOST_VARIANTS) {
-        candidates.add(`${scheme}://${host}/id/person/${bucket}/${authorId}`);
-        candidates.add(`${scheme}://${host}/id/author/${bucket}/${authorId}`);
-      }
-    }
-
-    return Array.from(candidates);
-  } catch {
-    return [iri];
-  }
-}
-
 function buildDirectAuthorNameQuery(directAuthorIri: string): string | null {
-  const candidates = buildDirectAuthorIriCandidates(directAuthorIri);
+  const candidates = buildAuthorIriCandidates(directAuthorIri);
   if (candidates.length === 0) return null;
 
   const values = candidates
@@ -250,42 +213,12 @@ const TOKEN_MAP: Record<string, FilterToken> = {
   cc: "country",
 };
 
-type CountryIndexEntry = {
-  code: string;
-  normalizedName: string;
-};
-
-const COUNTRY_ALIASES: Record<string, string[]> = {
-  us: ["US"],
-  usa: ["US"],
-  "united states": ["US"],
-  "united states of america": ["US"],
-  uk: ["GB"],
-  "united kingdom": ["GB"],
-  "great britain": ["GB"],
-  uae: ["AE"],
-  "south korea": ["KR"],
-  "north korea": ["KP"],
-  russia: ["RU"],
-  "czech republic": ["CZ"],
-  "ivory coast": ["CI"],
-};
-
-const COUNTRY_CODE_ALIASES: Record<string, string> = {
-  FX: "FR",
-};
-
-function canonicalizeCountryCode(input: string): string {
-  const code = (input ?? "").trim().toUpperCase();
-  if (!code) return "";
-  return COUNTRY_CODE_ALIASES[code] ?? code;
-}
-
 function addCountryCodeWithAliases(out: Set<string>, rawCode: string) {
   const code = (rawCode ?? "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return;
 
   const canonical = canonicalizeCountryCode(code);
+  if (KNOWN_COUNTRY_CODES.size > 0 && !KNOWN_COUNTRY_CODES.has(canonical)) return;
   out.add(canonical);
   out.add(code);
 
@@ -295,42 +228,8 @@ function addCountryCodeWithAliases(out: Set<string>, rawCode: string) {
   }
 }
 
-function normalizeCountryLookup(input: string): string {
-  return (input ?? "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function buildCountryIndex(): CountryIndexEntry[] {
-  let displayNames: Intl.DisplayNames | null = null;
-
-  try {
-    displayNames = new Intl.DisplayNames(["en"], { type: "region" });
-  } catch {
-    return [];
-  }
-
-  const rows: CountryIndexEntry[] = [];
-  for (let i = 65; i <= 90; i += 1) {
-    for (let j = 65; j <= 90; j += 1) {
-      const code = `${String.fromCharCode(i)}${String.fromCharCode(j)}`;
-      const name = displayNames.of(code);
-      if (!name) continue;
-      if (name.toUpperCase() === code) continue;
-      rows.push({
-        code,
-        normalizedName: normalizeCountryLookup(name),
-      });
-    }
-  }
-
-  return rows;
-}
-
 const COUNTRY_INDEX = buildCountryIndex();
+const KNOWN_COUNTRY_CODES = new Set<string>(COUNTRY_INDEX.map((entry) => entry.code));
 
 const COUNTRY_VARIANTS_BY_CODE: Map<string, string[]> = (() => {
   const byCode = new Map<string, Set<string>>();
@@ -482,9 +381,8 @@ function parseOmni(raw: string): ParsedOmni {
     };
   }
 
-  const mAuthorIri = s.match(/^\s*(?:a|author)\s*:\s*(<)?(https?:\/\/\S+?)\1?\s*$/i);
-  if (mAuthorIri?.[2]) {
-    const iri = mAuthorIri[2].trim().replace(/[)>.,;]+$/, "");
+  const directAuthorIriFromRaw = extractDirectAuthorIri(s);
+  if (directAuthorIriFromRaw) {
     return {
       titleQ: "",
       authorQ: "",
@@ -494,7 +392,7 @@ function parseOmni(raw: string): ParsedOmni {
       countryCodes: [],
       directPaperIri: null,
       directRisId: null,
-      directAuthorIri: iri,
+      directAuthorIri: directAuthorIriFromRaw,
     };
   }
 
@@ -1008,7 +906,7 @@ export async function GET(req: Request) {
         return NextResponse.json(payload);
     } catch (error: unknown) {
         return NextResponse.json(
-            { error: errorMessage(error, "Unknown error") },
+            { error: toErrorMessage(error, "Unknown error") },
             { status: 500 }
         );
     }
