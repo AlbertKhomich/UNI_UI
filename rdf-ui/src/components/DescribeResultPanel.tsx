@@ -369,7 +369,23 @@ export default function DescribeResultPanel(props: DescribeResultPanelProps) {
                   isDark ? "border-gray-700 bg-black/40" : "border-gray-200 bg-white"
                 }`}
               >
-                <table className="w-full border-collapse text-xs">
+                <table className="w-full min-w-[820px] table-fixed border-collapse text-xs">
+                  <colgroup>
+                    {hasNamedGraph ? (
+                      <>
+                        <col style={{ width: "24%" }} />
+                        <col style={{ width: "24%" }} />
+                        <col style={{ width: "36%" }} />
+                        <col style={{ width: "16%" }} />
+                      </>
+                    ) : (
+                      <>
+                        <col style={{ width: "28%" }} />
+                        <col style={{ width: "28%" }} />
+                        <col style={{ width: "44%" }} />
+                      </>
+                    )}
+                  </colgroup>
                   <thead className={isDark ? "bg-gray-800/70 text-gray-200" : "bg-gray-100 text-gray-700"}>
                     <tr>
                       <th className="border-b border-inherit px-3 py-2 text-left font-medium">Subject</th>
@@ -383,11 +399,17 @@ export default function DescribeResultPanel(props: DescribeResultPanelProps) {
                   <tbody>
                     {quads.map((quad, idx) => (
                       <tr key={`quad-${idx}`} className={isDark ? "border-t border-gray-700" : "border-t border-gray-200"}>
-                        <td className="align-top px-3 py-2">{renderTerm(quad.subject, prefixEntries, isDark)}</td>
-                        <td className="align-top px-3 py-2">{renderTerm(quad.predicate, prefixEntries, isDark)}</td>
-                        <td className="align-top px-3 py-2">{renderTerm(quad.object, prefixEntries, isDark)}</td>
+                        <td className="align-top px-3 py-2 whitespace-normal break-words">
+                          {renderTerm(quad.subject, prefixEntries, isDark)}
+                        </td>
+                        <td className="align-top px-3 py-2 whitespace-normal break-words">
+                          {renderTerm(quad.predicate, prefixEntries, isDark)}
+                        </td>
+                        <td className="align-top px-3 py-2 whitespace-normal break-words">
+                          {renderTerm(quad.object, prefixEntries, isDark)}
+                        </td>
                         {hasNamedGraph ? (
-                          <td className="align-top px-3 py-2">
+                          <td className="align-top px-3 py-2 whitespace-normal break-words">
                             {quad.graph ? renderTerm(quad.graph, prefixEntries, isDark) : null}
                           </td>
                         ) : null}
