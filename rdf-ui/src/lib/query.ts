@@ -111,17 +111,34 @@ export function toSearchQueryFromIri(input: string): string {
   return iri;
 }
 
+export function toDescribeIri(input: string): string | null {
+  const iri = canonicalizeUpbkgIri(input);
+  if (!iri) return null;
+
+  const parsed = parseUrl(iri);
+  if (!parsed) return null;
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  return parsed.toString();
+}
+
 export function initialQueryFromLocation(loc: LocationLike): string {
   const params = new URLSearchParams(loc.search);
   const directQ = (params.get("q") ?? "").trim();
-  if (directQ) return directQ;
+  return directQ;
+}
+
+export function initialDescribeIriFromLocation(loc: LocationLike): string | null {
+  const params = new URLSearchParams(loc.search);
+  const directQ = (params.get("q") ?? "").trim();
+  if (directQ) return null;
 
   const uriParam = (params.get("uri") ?? params.get("iri") ?? "").trim();
-  if (uriParam) return toSearchQueryFromIri(uriParam);
+  if (uriParam) return toDescribeIri(uriParam);
 
-  if (!loc.pathname || loc.pathname === "/" || loc.pathname.startsWith("/api/")) return "";
+  if (!loc.pathname || loc.pathname === "/" || loc.pathname.startsWith("/api/")) return null;
+  if (!CANONICALIZABLE_RDF_PATH_REGEX.test(loc.pathname)) return null;
   const pathIri = `${loc.origin}${loc.pathname}`;
-  return toSearchQueryFromIri(pathIri);
+  return toDescribeIri(pathIri);
 }
 
 export function isGithubUrl(input: string): boolean {

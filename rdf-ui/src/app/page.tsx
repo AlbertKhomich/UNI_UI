@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { FiMoon, FiSun } from "react-icons/fi";
+import DescribeResultPanel from "@/components/DescribeResultPanel";
 import PaperResultsList from "@/components/PaperResultsList";
 import SearchControls from "@/components/SearchControls";
 import UsersByCountryWidget from "@/components/CountryWidget";
+import { useDescribeState } from "@/hooks/useDescribeState";
 import { useCountryStats } from "@/hooks/useCountryStats";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSearchState } from "@/hooks/useSearchState";
@@ -15,11 +17,12 @@ import {
   canonicalizeUpbkgIri,
   extractDirectAuthorIri,
   getKnownAuthorNameByIriVariants,
+  initialDescribeIriFromLocation,
   initialQueryFromLocation,
   toSearchQueryFromIri,
 } from "@/lib/query";
 
-export { initialQueryFromLocation, toSearchQueryFromIri };
+export { initialDescribeIriFromLocation, initialQueryFromLocation, toSearchQueryFromIri };
 
 function toPossessive(name: string): string {
   const n = name.trim();
@@ -30,6 +33,7 @@ function toPossessive(name: string): string {
 
 export default function HomePage() {
   const [q, setQ] = useState("");
+  const [describeIri, setDescribeIri] = useState<string | null>(null);
   const dq = useDebounce(q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -71,6 +75,12 @@ export default function HomePage() {
     debouncedQuery: dq,
     debouncedAuthorIri,
   });
+  const {
+    body: describeBody,
+    contentType: describeContentType,
+    error: describeError,
+    loading: describeLoading,
+  } = useDescribeState({ iri: describeIri });
 
   const activeAuthorName = useMemo(
     () => (activeAuthorIri ? getKnownAuthorNameByIriVariants(knownAuthorNames, activeAuthorIri) : ""),
@@ -94,10 +104,19 @@ export default function HomePage() {
 
   useEffect(() => {
     const nextQ = initialQueryFromLocation(window.location);
-    if (!nextQ) return;
-    const rafId = window.requestAnimationFrame(() => setQ(nextQ));
+    const nextDescribeIri = initialDescribeIriFromLocation(window.location);
+    if (!nextQ && !nextDescribeIri) return;
+    const rafId = window.requestAnimationFrame(() => {
+      setQ(nextQ);
+      setDescribeIri(nextDescribeIri);
+    });
     return () => window.cancelAnimationFrame(rafId);
   }, []);
+
+  function handleQueryChange(nextQuery: string): void {
+    setDescribeIri(null);
+    setQ(nextQuery);
+  }
 
   function focusSearchInput(cursorPos: number): void {
     requestAnimationFrame(() => {
@@ -112,6 +131,7 @@ export default function HomePage() {
     const current = q.trimEnd();
     const separator = current.length > 0 ? " " : "";
     const next = `${current}${separator}${prefix} `;
+    setDescribeIri(null);
     setQ(next);
     focusSearchInput(next.length);
   }
@@ -120,12 +140,14 @@ export default function HomePage() {
     const code = (countryCode || "").trim().toUpperCase();
     if (!code) return;
     const next = `c: ${code}`;
+    setDescribeIri(null);
     setQ(next);
     focusSearchInput(next.length);
   }
 
   function handleAuthorSelect(authorIri: string, authorName: string): void {
     rememberAuthorName(authorIri, authorName);
+    setDescribeIri(null);
     setQ(`a: ${authorIri}`);
   }
 
@@ -186,12 +208,23 @@ export default function HomePage() {
         hasItems={items.length > 0}
         loading={loading}
         onApplyPrefix={applySearchPrefix}
-        onQueryChange={setQ}
+        onQueryChange={handleQueryChange}
         prefixButtonClass={prefixButtonClass}
         query={q}
         searchInputClass={searchInputClass}
         searchInputRef={searchInputRef}
       />
+
+      {describeIri ? (
+        <DescribeResultPanel
+          body={describeBody}
+          contentType={describeContentType}
+          error={describeError}
+          iri={describeIri}
+          isDark={isDark}
+          loading={describeLoading}
+        />
+      ) : null}
 
       <PaperResultsList
         canSearch={canSearch}

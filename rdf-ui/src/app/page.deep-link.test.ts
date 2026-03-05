@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialQueryFromLocation, toSearchQueryFromIri } from "./page";
+import { initialDescribeIriFromLocation, initialQueryFromLocation, toSearchQueryFromIri } from "./page";
 
 describe("deep-link query mapping", () => {
   it("maps person and orcid IRIs to author-prefixed query", () => {
@@ -45,50 +45,80 @@ describe("deep-link query mapping", () => {
       search: "?q=custom%20query&uri=http%3A%2F%2Fupbkg.data.dice-research.org%2Fid%2Forg%2Fo1",
     });
     expect(q).toBe("custom query");
+
+    const iri = initialDescribeIriFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/id/person/p1",
+      search: "?q=custom%20query&uri=http%3A%2F%2Fupbkg.data.dice-research.org%2Fid%2Forg%2Fo1",
+    });
+    expect(iri).toBeNull();
   });
 
-  it("uses uri/iri parameter when q is missing", () => {
-    const q1 = initialQueryFromLocation({
+  it("uses q parameter only for initial search", () => {
+    const q = initialQueryFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/id/publication/paper-123",
+      search: "?q=graph%20neural",
+    });
+    expect(q).toBe("graph neural");
+
+    const empty = initialQueryFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/id/publication/paper-123",
+      search: "",
+    });
+    expect(empty).toBe("");
+  });
+
+  it("uses uri/iri parameter for describe when q is missing", () => {
+    const iri1 = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
       pathname: "/",
       search:
         "?uri=http%3A%2F%2Fupbkg.data.dice-research.org%2Fid%2Fperson%2Fp1",
     });
-    expect(q1).toBe("a: http://upbkg.data.dice-research.org/id/person/p1");
+    expect(iri1).toBe("http://upbkg.data.dice-research.org/id/person/p1");
 
-    const q2 = initialQueryFromLocation({
+    const iri2 = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
       pathname: "/",
       search:
         "?iri=http%3A%2F%2Fupbkg.data.dice-research.org%2Fid%2Forg%2Fo1",
     });
-    expect(q2).toBe("aff: http://upbkg.data.dice-research.org/id/org/o1");
+    expect(iri2).toBe("http://upbkg.data.dice-research.org/id/org/o1");
   });
 
-  it("maps non-root path to query when no params are present", () => {
-    const q = initialQueryFromLocation({
+  it("maps non-root rdf path to describe iri when no params are present", () => {
+    const iri = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
       pathname: "/id/publication/paper-123",
       search: "",
     });
-    expect(q).toBe("http://upbkg.data.dice-research.org/id/publication/paper-123");
+    expect(iri).toBe("http://upbkg.data.dice-research.org/id/publication/paper-123");
   });
 
-  it("canonicalizes non-root path host when no params are present", () => {
-    const q = initialQueryFromLocation({
+  it("canonicalizes non-root path host for describe iri", () => {
+    const iri = initialDescribeIriFromLocation({
       origin: "http://131.234.26.202:3001",
       pathname: "/id/person/hash/63fa35093706",
       search: "",
     });
-    expect(q).toBe("a: http://upbkg.data.dice-research.org/id/person/hash/63fa35093706");
+    expect(iri).toBe("http://upbkg.data.dice-research.org/id/person/hash/63fa35093706");
   });
 
-  it("ignores api paths for initial query", () => {
-    const q = initialQueryFromLocation({
+  it("ignores api paths and unknown paths for describe iri", () => {
+    const apiIri = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
       pathname: "/api/search",
       search: "",
     });
-    expect(q).toBe("");
+    expect(apiIri).toBeNull();
+
+    const unknownIri = initialDescribeIriFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/docs/about",
+      search: "",
+    });
+    expect(unknownIri).toBeNull();
   });
 });

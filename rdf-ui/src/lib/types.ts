@@ -14,6 +14,12 @@ export type SearchResponse = {
     authorName?: string;
 }
 
+export type DescribeResponse = {
+    iri: string;
+    contentType: string;
+    body: string;
+};
+
 export type PersonWithAffiliations = {
     iri: string;
     name: string;

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { escapeSparqlStringLiteral, sparqlSelect } from "./sparql";
+import { escapeSparqlStringLiteral, sparqlDescribe, sparqlSelect } from "./sparql";
 
 describe("escapeSparqlStringLiteral", () => {
   it("escapes backslashes, quotes and control characters", () => {
@@ -55,6 +55,61 @@ describe("sparqlSelect", () => {
     );
 
     await expect(sparqlSelect("ASK {}")).rejects.toThrow(
+      "SPARQL error 503: upstream failed",
+    );
+  });
+});
+
+describe("sparqlDescribe", () => {
+  afterEach(() => {
+    delete process.env.SPARQL_ENDPOINT;
+    vi.unstubAllGlobals();
+  });
+
+  it("throws when SPARQL_ENDPOINT is missing", async () => {
+    await expect(sparqlDescribe("DESCRIBE <https://example.org/resource/1>")).rejects.toThrow(
+      "Missing env var: SPARQL_ENDPOINT",
+    );
+  });
+
+  it("posts query and returns describe payload", async () => {
+    process.env.SPARQL_ENDPOINT = "https://example.test/sparql";
+    const query = "DESCRIBE <https://example.org/resource/1>";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        "<https://example.org/resource/1> <https://example.org/p> \"ok\" .\n",
+        {
+          status: 200,
+          headers: { "content-type": "application/n-triples" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const payload = await sparqlDescribe(query);
+
+    expect(payload).toEqual({
+      body: "<https://example.org/resource/1> <https://example.org/p> \"ok\" .\n",
+      contentType: "application/n-triples",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://example.test/sparql");
+    expect(init?.method).toBe("POST");
+    expect((init?.body as URLSearchParams).get("query")).toBe(query);
+    expect(init?.headers).toMatchObject({
+      accept: expect.stringContaining("text/turtle"),
+    });
+  });
+
+  it("throws an error with status and response text for non-ok responses", async () => {
+    process.env.SPARQL_ENDPOINT = "https://example.test/sparql";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("upstream failed", { status: 503 })),
+    );
+
+    await expect(sparqlDescribe("DESCRIBE <https://example.org/resource/1>")).rejects.toThrow(
       "SPARQL error 503: upstream failed",
     );
   });
