@@ -1,6 +1,8 @@
 const PAPER_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
 const PERSON_PATH_REGEX = /\/(?:id\/person|orcid)(?:\/|$)/i;
 const ORGANIZATION_PATH_REGEX = /\/(?:id\/org|ror|openalex_org)(?:\/|$)/i;
+const DIRECT_URI_FILTER_QUERY_REGEX = /^\s*(?:a|author|aff|af|affiliation)\s*:\s*(<)?(https?:\/\/\S+?)\1?\s*$/i;
+const DIRECT_URI_QUERY_REGEX = /^\s*(<)?(https?:\/\/\S+?)\1?\s*$/i;
 const CANONICAL_UPBKG_ORIGIN = "http://upbkg.data.dice-research.org";
 const CANONICALIZABLE_RDF_PATH_REGEX =
   /\/(?:id\/(?:person|org|publication|venue)|orcid|ror|openalex_org)(?:\/|$)/i;
@@ -121,24 +123,49 @@ export function toDescribeIri(input: string): string | null {
   return parsed.toString();
 }
 
+export function extractDescribeIriFromSearchQuery(input: string): string | null {
+  const raw = (input ?? "").trim();
+  if (!raw) return null;
+
+  const filtered = raw.match(DIRECT_URI_FILTER_QUERY_REGEX);
+  if (filtered?.[2]) return toDescribeIri(filtered[2].replace(/[)>.,;]+$/, ""));
+
+  const plain = raw.match(DIRECT_URI_QUERY_REGEX);
+  if (plain?.[2]) return toDescribeIri(plain[2].replace(/[)>.,;]+$/, ""));
+
+  return null;
+}
+
 export function initialQueryFromLocation(loc: LocationLike): string {
   const params = new URLSearchParams(loc.search);
   const directQ = (params.get("q") ?? "").trim();
+
+  // Keep direct URI-driven search auto-mapping disabled for browse-first navigation.
+  // Useful for future if we need to restore old behavior:
+  // if (extractDescribeIriFromSearchQuery(directQ)) return toSearchQueryFromIri(directQ);
+  if (extractDescribeIriFromSearchQuery(directQ)) return "";
   return directQ;
 }
 
 export function initialDescribeIriFromLocation(loc: LocationLike): string | null {
   const params = new URLSearchParams(loc.search);
   const directQ = (params.get("q") ?? "").trim();
-  if (directQ) return null;
+  if (directQ) return extractDescribeIriFromSearchQuery(directQ);
 
   const uriParam = (params.get("uri") ?? params.get("iri") ?? "").trim();
   if (uriParam) return toDescribeIri(uriParam);
 
   if (!loc.pathname || loc.pathname === "/" || loc.pathname.startsWith("/api/")) return null;
-  if (!CANONICALIZABLE_RDF_PATH_REGEX.test(loc.pathname)) return null;
-  const pathIri = `${loc.origin}${loc.pathname}`;
-  return toDescribeIri(pathIri);
+
+  // Browse-first mode: path-based navigation should resolve against canonical UPBKG host.
+  const canonicalPathIri = `${CANONICAL_UPBKG_ORIGIN}${loc.pathname}`;
+  const canonical = toDescribeIri(canonicalPathIri);
+  if (canonical) return canonical;
+
+  // Useful fallback for future non-UPBKG deployments:
+  // const pathIri = `${loc.origin}${loc.pathname}`;
+  // return toDescribeIri(pathIri);
+  return null;
 }
 
 export function isGithubUrl(input: string): boolean {

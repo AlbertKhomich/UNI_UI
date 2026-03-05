@@ -37,7 +37,10 @@ describe("GET /api/describe", () => {
   it("runs DESCRIBE query and returns payload", async () => {
     mockedSparqlDescribe.mockResolvedValue({
       contentType: "text/turtle",
-      body: "@prefix ex: <https://example.org/> .",
+      body: [
+        "@prefix ex: <https://example.org/> .",
+        "<https://example.org/s> <https://example.org/p> \"v\" .",
+      ].join("\n"),
     });
 
     const iri = "http://upbkg.data.dice-research.org/ror/058kzsd48/faculty-eim";
@@ -45,10 +48,22 @@ describe("GET /api/describe", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       iri,
       contentType: "text/turtle",
-      body: "@prefix ex: <https://example.org/> .",
+      body: [
+        "@prefix ex: <https://example.org/> .",
+        "<https://example.org/s> <https://example.org/p> \"v\" .",
+      ].join("\n"),
+      prefixes: { ex: "https://example.org/" },
+      parseError: null,
+    });
+    expect(Array.isArray(body.quads)).toBe(true);
+    expect(body.quads).toHaveLength(1);
+    expect(body.quads[0]).toMatchObject({
+      subject: { termType: "NamedNode", value: "https://example.org/s" },
+      predicate: { termType: "NamedNode", value: "https://example.org/p" },
+      object: { termType: "Literal", value: "v" },
     });
     expect(mockedSparqlDescribe).toHaveBeenCalledTimes(1);
     expect(mockedSparqlDescribe).toHaveBeenCalledWith(`DESCRIBE <${iri}>`);

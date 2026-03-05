@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { toErrorMessage } from "@/lib/errors";
 import { canonicalizeUpbkgIri } from "@/lib/query";
+import { parseDescribeBodyWithN3 } from "@/lib/rdf";
 import { sparqlDescribe } from "@/lib/sparql";
 
 function parseDescribeIri(raw: string): string | null {
@@ -25,10 +26,18 @@ export async function GET(req: Request) {
 
     const query = `DESCRIBE <${iri}>`;
     const payload = await sparqlDescribe(query);
+    const parsed = parseDescribeBodyWithN3(payload.body, payload.contentType);
     return NextResponse.json({
       iri,
       contentType: payload.contentType,
       body: payload.body,
+      ...(parsed
+        ? {
+            quads: parsed.quads,
+            prefixes: parsed.prefixes,
+            parseError: parsed.parseError,
+          }
+        : {}),
     });
   } catch (error: unknown) {
     return NextResponse.json({ error: toErrorMessage(error) }, { status: 500 });

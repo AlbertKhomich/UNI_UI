@@ -80,6 +80,9 @@ export default function HomePage() {
     contentType: describeContentType,
     error: describeError,
     loading: describeLoading,
+    parseError: describeParseError,
+    prefixes: describePrefixes,
+    quads: describeQuads,
   } = useDescribeState({ iri: describeIri });
 
   const activeAuthorName = useMemo(
@@ -223,6 +226,9 @@ export default function HomePage() {
           iri={describeIri}
           isDark={isDark}
           loading={describeLoading}
+          parseError={describeParseError}
+          prefixes={describePrefixes}
+          quads={describeQuads}
         />
       ) : null}
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { initialDescribeIriFromLocation, initialQueryFromLocation, toSearchQueryFromIri } from "./page";
+import {
+  initialDescribeIriFromLocation,
+  initialQueryFromLocation,
+  toSearchQueryFromIri,
+} from "./page";
 
 describe("deep-link query mapping", () => {
   it("maps person and orcid IRIs to author-prefixed query", () => {
@@ -70,6 +74,22 @@ describe("deep-link query mapping", () => {
     expect(empty).toBe("");
   });
 
+  it("disables auto-search when q contains direct uri filters and prefers describe mode", () => {
+    const q = initialQueryFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/",
+      search: "?q=aff%3A%20http%3A%2F%2Fupbkg.data.dice-research.org%2Fror%2F058kzsd48%2Ffaculty-eim",
+    });
+    expect(q).toBe("");
+
+    const iri = initialDescribeIriFromLocation({
+      origin: "http://upbkg.data.dice-research.org",
+      pathname: "/",
+      search: "?q=aff%3A%20http%3A%2F%2Fupbkg.data.dice-research.org%2Fror%2F058kzsd48%2Ffaculty-eim",
+    });
+    expect(iri).toBe("http://upbkg.data.dice-research.org/ror/058kzsd48/faculty-eim");
+  });
+
   it("uses uri/iri parameter for describe when q is missing", () => {
     const iri1 = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
@@ -106,19 +126,30 @@ describe("deep-link query mapping", () => {
     expect(iri).toBe("http://upbkg.data.dice-research.org/id/person/hash/63fa35093706");
   });
 
-  it("ignores api paths and unknown paths for describe iri", () => {
+  it("ignores api paths for describe iri", () => {
     const apiIri = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
       pathname: "/api/search",
       search: "",
     });
     expect(apiIri).toBeNull();
+  });
 
-    const unknownIri = initialDescribeIriFromLocation({
+  it("maps non-api path to describe iri for browse-first navigation", () => {
+    const iri = initialDescribeIriFromLocation({
       origin: "http://upbkg.data.dice-research.org",
-      pathname: "/docs/about",
+      pathname: "/wikidata/Q133163755",
       search: "",
     });
-    expect(unknownIri).toBeNull();
+    expect(iri).toBe("http://upbkg.data.dice-research.org/wikidata/Q133163755");
+  });
+
+  it("canonicalizes non-api path host for browse-first navigation", () => {
+    const iri = initialDescribeIriFromLocation({
+      origin: "http://131.234.26.202:3001",
+      pathname: "/wikidata/Q133163755",
+      search: "",
+    });
+    expect(iri).toBe("http://upbkg.data.dice-research.org/wikidata/Q133163755");
   });
 });
