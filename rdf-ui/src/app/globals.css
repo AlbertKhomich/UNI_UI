@@ -37,3 +37,33 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.country-popularity-popup .maplibregl-popup-content {
+  border-radius: 14px;
+  border: 1px solid transparent;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  padding: 10px 12px;
+}
+
+.country-popularity-popup.country-popularity-popup--light .maplibregl-popup-content {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.country-popularity-popup.country-popularity-popup--dark .maplibregl-popup-content {
+  background: rgba(2, 8, 23, 0.96);
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.52);
+}
+
+.country-popularity-popup.country-popularity-popup--light.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.country-popularity-popup.country-popularity-popup--light.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.country-popularity-popup.country-popularity-popup--light.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: rgba(255, 255, 255, 0.98);
+}
+
+.country-popularity-popup.country-popularity-popup--dark.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.country-popularity-popup.country-popularity-popup--dark.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.country-popularity-popup.country-popularity-popup--dark.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: rgba(2, 8, 23, 0.96);
+}

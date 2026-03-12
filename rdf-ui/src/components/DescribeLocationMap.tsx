@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DescribeLocationPoint } from "@/lib/describeLocations";
+import { hideReferenceLatitudeLayers } from "@/lib/mapStyle";
 
 type DescribeLocationMapProps = {
   isDark: boolean;
@@ -55,6 +56,7 @@ export default function DescribeLocationMap(props: DescribeLocationMapProps) {
 
         map.once("load", () => {
           if (cancelled) return;
+          hideReferenceLatitudeLayers(map);
           map.setCenter(EARTH_OVERVIEW_CENTER);
           map.setZoom(EARTH_OVERVIEW_ZOOM);
         });

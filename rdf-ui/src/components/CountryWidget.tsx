@@ -1,4 +1,5 @@
 import React from "react"
+import CountryPopularityMap from "@/components/CountryPopularityMap";
 import { Row } from "@/lib/types";
 type Theme = "dark" | "light";
 
@@ -33,6 +34,7 @@ export default function UsersByCountryWidget({
     onCountryClick?: (countryCode: string, label: string) => void;
 }) {
     const [showAll, setShowAll] = React.useState(false);
+    const [showMap, setShowMap] = React.useState(false);
     const isDark = theme === "dark";
 
     const denomDonut = rows.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
@@ -180,8 +182,8 @@ export default function UsersByCountryWidget({
                             </div>
                         )
                     })}
-                    {sortedRows.length > 4 ? (
-                        <div>
+                    <div className="flex flex-wrap gap-3">
+                        {sortedRows.length > 4 ? (
                             <button
                                 type="button"
                                 className={`rounded-xl border bg-transparent px-3 py-3 text-base transition-colors ${
@@ -193,10 +195,30 @@ export default function UsersByCountryWidget({
                             >
                                 {showAll ? "Show less countries" : "Show all countries"}
                             </button>
-                        </div>
-                    ) : null}
+                        ) : null}
+                        <button
+                            type="button"
+                            className={`rounded-xl border bg-transparent px-3 py-3 text-base transition-colors ${
+                                isDark
+                                    ? "border-gray-500 hover:bg-gray-800"
+                                    : "border-gray-300 hover:bg-gray-100"
+                            }`}
+                            onClick={() => setShowMap((v) => !v)}
+                        >
+                            {showMap ? "Hide country map" : "Show country map"}
+                        </button>
+                    </div>
                 </div>
             </div>
+            {showMap ? (
+                <div className={`mt-6 border-t pt-6 ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+                    <CountryPopularityMap
+                        rows={sortedRows}
+                        theme={theme}
+                        onCountryClick={onCountryClick}
+                    />
+                </div>
+            ) : null}
         </div>
     )
 }

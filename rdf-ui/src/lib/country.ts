@@ -1,3 +1,5 @@
+import { COUNTRY_ALPHA2_TO_ALPHA3 } from "./countryIso3";
+
 export type CountryIndexEntry = {
   code: string;
   normalizedName: string;
@@ -66,6 +68,9 @@ export function buildCountryIndex(): CountryIndexEntry[] {
 
 const COUNTRY_INDEX = buildCountryIndex();
 const KNOWN_COUNTRY_CODES = new Set<string>(COUNTRY_INDEX.map((entry) => entry.code));
+const COUNTRY_ALPHA3_TO_ALPHA2 = new Map<string, string>(
+  Object.entries(COUNTRY_ALPHA2_TO_ALPHA3).map(([alpha2, alpha3]) => [alpha3, alpha2]),
+);
 
 const COUNTRY_NAME_TO_CODE: Map<string, string> = (() => {
   const out = new Map<string, string>();
@@ -97,6 +102,18 @@ export function countryCodeToName(input: string, locale = "en"): string {
   } catch {
     return code;
   }
+}
+
+export function countryCodeToAlpha3(input: string): string {
+  const code = canonicalizeCountryCode(input);
+  if (!/^[A-Z]{2}$/.test(code)) return "";
+  return COUNTRY_ALPHA2_TO_ALPHA3[code] ?? "";
+}
+
+export function countryAlpha3ToCode(input: string): string {
+  const code = (input ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) return "";
+  return COUNTRY_ALPHA3_TO_ALPHA2.get(code) ?? "";
 }
 
 export function toCountryCode(input: string): string {

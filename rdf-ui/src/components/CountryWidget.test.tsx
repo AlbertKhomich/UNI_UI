@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import UsersByCountryWidget from "./CountryWidget";
 
 describe("UsersByCountryWidget", () => {
-  it("toggles full country list and forwards country clicks", async () => {
+  it("toggles the country map, expands the list, and forwards country clicks", async () => {
     const onCountryClick = vi.fn();
     const user = userEvent.setup();
 
@@ -24,6 +24,12 @@ describe("UsersByCountryWidget", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Japan" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Country popularity map")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show country map" }));
+
+    expect(screen.getByRole("button", { name: "Hide country map" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Country popularity map")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Show all countries" }));
 
