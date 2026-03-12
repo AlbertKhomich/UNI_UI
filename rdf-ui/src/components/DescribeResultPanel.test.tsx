@@ -71,4 +71,51 @@ describe("DescribeResultPanel", () => {
     expect(screen.getByText("2 triples")).toBeInTheDocument();
     expect(screen.getByText(/Content type: text\/turtle/)).toBeInTheDocument();
   });
+
+  it("shows a map section when describe quads contain coordinates", () => {
+    const iri = "https://example.org/affiliations/geo";
+    const quads: DescribeQuad[] = [
+      {
+        subject: { termType: "NamedNode", value: iri },
+        predicate: { termType: "NamedNode", value: "https://schema.org/name" },
+        object: {
+          termType: "Literal",
+          value: "Geo Institute",
+          datatype: "http://www.w3.org/2001/XMLSchema#string",
+        },
+      },
+      {
+        subject: { termType: "NamedNode", value: iri },
+        predicate: { termType: "NamedNode", value: "https://schema.org/latitude" },
+        object: { termType: "Literal", value: "51.71892", datatype: "http://www.w3.org/2001/XMLSchema#decimal" },
+      },
+      {
+        subject: { termType: "NamedNode", value: iri },
+        predicate: { termType: "NamedNode", value: "https://schema.org/longitude" },
+        object: { termType: "Literal", value: "8.75751", datatype: "http://www.w3.org/2001/XMLSchema#decimal" },
+      },
+    ];
+
+    render(
+      <DescribeResultPanel
+        body=""
+        contentType="application/ld+json"
+        error={null}
+        iri={iri}
+        isDark={false}
+        loading={false}
+        parseError={null}
+        prefixes={{}}
+        quads={quads}
+      />,
+    );
+
+    expect(screen.getByText("Map")).toBeInTheDocument();
+    expect(screen.getByLabelText("Map showing 1 location")).toBeInTheDocument();
+    expect(screen.getByText("Geo Institute")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in OSM" })).toHaveAttribute(
+      "href",
+      "https://www.openstreetmap.org/?mlat=51.71892&mlon=8.75751#map=12/51.71892/8.75751",
+    );
+  });
 });
