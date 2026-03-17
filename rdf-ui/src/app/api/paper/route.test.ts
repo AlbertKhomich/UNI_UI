@@ -36,6 +36,26 @@ describe("GET /api/paper", () => {
     expect(body).toEqual({ error: "Not found" });
   });
 
+  it("returns a readable message when the upstream service times out", async () => {
+    mockedSparqlSelect.mockRejectedValueOnce(
+      new Error(
+        [
+          "SPARQL error 504:",
+          "<html><head><title>504 Gateway Time-out</title></head>",
+          "<body><center><h1>504 Gateway Time-out</h1></center><hr><center>nginx/1.22.1</center></body></html>",
+        ].join(" "),
+      ),
+    );
+
+    const response = await GET(new Request("http://localhost/api/paper?id=123"));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      error: "The data service timed out. Please try again in a moment.",
+    });
+  });
+
   it("extracts DOI URL and deduplicates author affiliations", async () => {
     const paperRows: SparqlRow[] = [
       {

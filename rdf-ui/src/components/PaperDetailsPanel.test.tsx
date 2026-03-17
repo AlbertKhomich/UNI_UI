@@ -62,7 +62,8 @@ describe("PaperDetailsPanel", () => {
     );
 
     expect(screen.getByText("Loading details...")).toBeInTheDocument();
-    expect(screen.getByText("Failed to load")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load expanded paper information.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load");
   });
 
   it("renders details and emits author selection callback", () => {

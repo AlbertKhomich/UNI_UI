@@ -95,6 +95,8 @@ describe("GET /api/describe", () => {
     const body = await response.json();
 
     expect(response.status).toBe(500);
-    expect(body).toEqual({ error: "SPARQL error 503: upstream failed" });
+    expect(body).toEqual({
+      error: "The data service is temporarily unavailable. Please try again in a moment.",
+    });
   });
 });

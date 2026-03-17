@@ -48,7 +48,19 @@ export default function PaperDetailsPanel(props: PaperDetailsPanelProps) {
   return (
     <div className={detailsClass}>
       {loadingDetails && <div>Loading details...</div>}
-      {detailsError && <div className="text-red-600">{detailsError}</div>}
+      {detailsError && (
+        <div
+          role="alert"
+          className={
+            isDark
+              ? "rounded-lg border border-red-500/60 bg-red-950/30 px-3 py-2 text-sm text-red-100"
+              : "rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+          }
+        >
+          <div className="font-medium">Couldn&apos;t load expanded paper information.</div>
+          <div className="mt-1">{detailsError}</div>
+        </div>
+      )}
 
       {detail && !loadingDetails && !detailsError && (
         <div className="space-y-2">
