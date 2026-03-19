@@ -82,4 +82,20 @@ describe("getCountries", () => {
     expect(result.totalPapers).toBe(0);
     expect(result.rows).toEqual([]);
   });
+
+  it("adds the Sammelband exclusion to both SPARQL queries", async () => {
+    mockedSparqlSelect
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ totalPapers: { type: "literal", value: "0" } }]);
+
+    await getCountries();
+
+    const countriesQuery = mockedSparqlSelect.mock.calls[0]?.[0] ?? "";
+    const totalQuery = mockedSparqlSelect.mock.calls[1]?.[0] ?? "";
+
+    expect(countriesQuery).toContain("http://upbkg.data.dice-research.org/vocab/publicationType");
+    expect(countriesQuery).toContain('"sammelband"');
+    expect(totalQuery).toContain("http://upbkg.data.dice-research.org/vocab/publicationType");
+    expect(totalQuery).toContain('"sammelband"');
+  });
 });

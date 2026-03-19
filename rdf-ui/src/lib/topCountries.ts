@@ -1,4 +1,5 @@
 import { sparqlSelect, SparqlRow } from "@/lib/sparql";
+import { excludeSammelbandPattern } from "@/lib/publicationFilters";
 
 const COUNTRIES_QUERY = `
 prefix schema: <https://schema.org/>
@@ -11,6 +12,7 @@ WHERE {
   ?paper schema:author ?author .
   ?author schema:affiliation ?aff .
   ?aff schema:addressCountry ?cc .
+  ${excludeSammelbandPattern("?paper")}
 }
 `
 
@@ -20,6 +22,7 @@ prefix schema: <https://schema.org/>
 select (count(distinct ?paper) as ?totalPapers)
 where {
   ?paper schema:author ?author .
+  ${excludeSammelbandPattern("?paper")}
 }
 `
 

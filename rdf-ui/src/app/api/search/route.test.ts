@@ -75,6 +75,9 @@ describe("GET /api/search", () => {
         { id: "xyz", iri: "http://upbkg.data.dice-research.org/id/author/uni/xyz" },
       ],
     });
+    const query = mockedSparqlSelect.mock.calls[0]?.[0] ?? "";
+    expect(query).toContain("http://upbkg.data.dice-research.org/vocab/publicationType");
+    expect(query).toContain('"sammelband"');
     expect(mockedSparqlSelect).toHaveBeenCalledTimes(1);
   });
 
@@ -208,14 +211,78 @@ describe("GET /api/search", () => {
       'FILTER(STRSTARTS(LCASE(STR(?name)), LCASE("knowledge graph")))',
     );
     expect(searchQuery).toContain('FILTER(STR(?year0) = "2024")');
-    expect(searchQuery).toContain(
-      'FILTER(CONTAINS(LCASE(STR(?aaName1)), LCASE("Doe, Jane")))',
-    );
+    expect(searchQuery).toContain('CONTAINS(LCASE(STR(?aaName1)), LCASE("Doe, Jane"))');
+    expect(searchQuery).toContain('CONTAINS(?aaName1Norm1, "doe jane")');
     expect(searchQuery).toContain(
       'FILTER(CONTAINS(LCASE(STR(COALESCE(?affName2, ?aff2))), LCASE("University of Bonn")))',
     );
     expect(searchQuery).toMatch(/UCASE\(STR\(\?cc0\)\)\s+IN\s+\([^)]*"US"[^)]*\)/);
+    expect(searchQuery).toContain("http://upbkg.data.dice-research.org/vocab/publicationType");
+    expect(searchQuery).toContain('"sammelband"');
     expect(countQuery).toContain("COUNT(DISTINCT ?paper)");
+    expect(countQuery).toContain("http://upbkg.data.dice-research.org/vocab/publicationType");
+    expect(countQuery).toContain('"sammelband"');
+  });
+
+  it("matches comma-separated author names when the query omits punctuation", async () => {
+    let searchQuery = "";
+
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        return [{ total: { type: "literal", value: "1" } }];
+      }
+
+      searchQuery = query;
+      return [
+        {
+          paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/422" },
+          title: { type: "literal", value: "Author Search Normalization" },
+          year: { type: "literal", value: "2026" },
+          authors: { type: "literal", value: "Becker, Alexander" },
+          authorIris: { type: "literal", value: "http://upbkg.data.dice-research.org/id/author/hash/ab1" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const response = await GET(
+      new Request(`http://localhost/api/search?q=${encodeURIComponent("a: becker alexander")}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(1);
+    expect(searchQuery).toContain('CONTAINS(?aaName1Norm1, "becker alexander")');
+  });
+
+  it("matches display-order author queries against stored comma-separated names", async () => {
+    let searchQuery = "";
+
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        return [{ total: { type: "literal", value: "1" } }];
+      }
+
+      searchQuery = query;
+      return [
+        {
+          paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/423" },
+          title: { type: "literal", value: "Author Search Display Order" },
+          year: { type: "literal", value: "2026" },
+          authors: { type: "literal", value: "Becker, Alexander" },
+          authorIris: { type: "literal", value: "http://upbkg.data.dice-research.org/id/author/hash/ab2" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const response = await GET(
+      new Request(`http://localhost/api/search?q=${encodeURIComponent("a: alexander becker")}`),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(1);
+    expect(searchQuery).toContain('CONTAINS(?aaName1Norm1, "alexander")');
+    expect(searchQuery).toContain('CONTAINS(?aaName1Norm1, "becker")');
   });
 
   it("treats author IRI token as a direct IRI filter", async () => {

@@ -7,6 +7,7 @@ import {
   normalizeCountryLookup,
 } from "@/lib/country";
 import { toErrorMessage } from "@/lib/errors";
+import { excludeSammelbandPattern } from "@/lib/publicationFilters";
 import { escapeSparqlStringLiteral, sparqlSelect, SparqlRow } from "@/lib/sparql";
 import { toDisplayName } from "@/lib/format";
 import { paperIriFromId } from "@/lib/papers";
@@ -16,6 +17,7 @@ const PREFIXES = `
 PREFIX schema: <https://schema.org/>
 `;
 const PAPER_RESOURCE_FILTER = `FILTER(REGEX(STR(?paper), "/id/(publication|venue)(/|$)"))`;
+const EXCLUDE_SAMMELBAND_FILTER = excludeSammelbandPattern("?paper");
 const PUBLICATION_OR_VENUE_PATH_REGEX = /\/id\/(?:publication|venue)(?:\/|$)/i;
 
 const CACHE_TTL_MS = 60_000;
@@ -100,6 +102,25 @@ function decodeSearchCursor(raw: string): SearchCursor | null {
   } catch {
     return null;
   }
+}
+
+function normalizeLooseText(value: string): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function buildNormalizedStringBind(sourceExpr: string, targetVar: string): string {
+  return `
+    BIND(
+      REPLACE(
+        REPLACE(LCASE(STR(${sourceExpr})), "[^a-z0-9]+", " "),
+        "^ +| +$",
+        ""
+      ) AS ${targetVar}
+    )
+  `;
 }
 
 
@@ -464,6 +485,7 @@ function buildDirectQuery(paperIri: string) {
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       BIND(<${paperIri}> AS ?paper)
+      ${EXCLUDE_SAMMELBAND_FILTER}
       OPTIONAL { ?paper schema:name ?name . }
       OPTIONAL { ?paper schema:datePublished ?year0 . }
       optional {
@@ -495,10 +517,26 @@ function buildAuthorJoinPattern(authorQ: string): string {
   }
 
   const authorLit = escapeSparqlStringLiteral(v);
+  const normalizedAuthor = normalizeLooseText(v);
+  const normalizedAuthorLit = escapeSparqlStringLiteral(normalizedAuthor);
+  const normalizedAuthorTokens = Array.from(
+    new Set(normalizedAuthor.split(" ").map((part) => part.trim()).filter(Boolean)),
+  );
+  const normalizedAuthorTokenFilter =
+    normalizedAuthorTokens.length > 1
+      ? normalizedAuthorTokens
+          .map((token) => `CONTAINS(?aaName1Norm1, ${escapeSparqlStringLiteral(token)})`)
+          .join("\n      && ")
+      : "";
   return `
     ?paper schema:author ?aa1 .
     ?aa1 schema:name ?aaName1 .
-    FILTER(CONTAINS(LCASE(STR(?aaName1)), LCASE(${authorLit})))
+    ${buildNormalizedStringBind("?aaName1", "?aaName1Norm1")}
+    FILTER(
+      CONTAINS(LCASE(STR(?aaName1)), LCASE(${authorLit}))
+      || CONTAINS(?aaName1Norm1, ${normalizedAuthorLit})
+      ${normalizedAuthorTokenFilter ? `|| (\n      ${normalizedAuthorTokenFilter}\n    )` : ""}
+    )
   `;
 }
 
@@ -675,6 +713,7 @@ function buildSearchQuery(args: {
         SELECT ?paper (MIN(?nameSort0) AS ?nameSort)
         WHERE {
           ${PAPER_RESOURCE_FILTER}
+          ${EXCLUDE_SAMMELBAND_FILTER}
 
           ${authorIriFilter}
 
@@ -752,6 +791,7 @@ function buildCountQuery(args: {
     SELECT (COUNT(DISTINCT ?paper) AS ?total)
     WHERE {
       ${PAPER_RESOURCE_FILTER}
+      ${EXCLUDE_SAMMELBAND_FILTER}
 
       ${authorIriFilter}
 
