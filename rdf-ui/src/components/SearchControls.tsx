@@ -50,35 +50,34 @@ export default function SearchControls(props: SearchControlsProps) {
       />
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          aria-label="From year"
-          placeholder="from"
-          value={yearFrom}
-          onChange={(event) => onYearRangeChange([event.target.value.replace(/\D/g, "").slice(0, 4), yearTo])}
-          className={yearInputClass}
-        />
-        <span className="text-sm text-gray-500">to</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          aria-label="To year"
-          placeholder="to"
-          value={yearTo}
-          onChange={(event) => onYearRangeChange([yearFrom, event.target.value.replace(/\D/g, "").slice(0, 4)])}
-          className={yearInputClass}
-        />
-        {(yearFrom || yearTo) ? (
-          <button type="button" className={prefixButtonClass} onClick={() => onYearRangeChange(["", ""])}>
-            clear
-          </button>
-        ) : null}
-      </div>
-
-      <div className="mt-2 flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="From year"
+            placeholder="YYYY"
+            value={yearFrom}
+            onChange={(event) => onYearRangeChange([event.target.value.replace(/\D/g, "").slice(0, 4), yearTo])}
+            className={yearInputClass}
+          />
+          <span className="text-sm text-gray-500">to</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="To year"
+            placeholder="YYYY"
+            value={yearTo}
+            onChange={(event) => onYearRangeChange([yearFrom, event.target.value.replace(/\D/g, "").slice(0, 4)])}
+            className={yearInputClass}
+          />
+          {(yearFrom || yearTo) ? (
+            <button type="button" className={prefixButtonClass} onClick={() => onYearRangeChange(["", ""])}>
+              clear
+            </button>
+          ) : null}
+        </div>
         <button type="button" className={prefixButtonClass} onClick={() => onApplyPrefix("a:")}>
           author
         </button>
