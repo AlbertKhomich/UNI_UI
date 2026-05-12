@@ -67,6 +67,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [lastSparql, setLastSparql] = useState("");
 
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
   const [details, setDetails] = useState<Record<string, PaperDetails>>({});
@@ -118,6 +119,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
         setNextCursor(null);
         setHasMore(false);
         setErr(null);
+        setLastSparql("");
         return;
       }
 
@@ -136,6 +138,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
         setSearchTotal(total);
         setNextCursor(next);
         setHasMore(Boolean(next));
+        setLastSparql(typeof payload.sparql === "string" ? payload.sparql : "");
 
         if (debouncedAuthorIri && typeof payload.authorName === "string" && payload.authorName.trim()) {
           const directAuthorName = payload.authorName.trim();
@@ -155,6 +158,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
           setSearchTotal(0);
           setNextCursor(null);
           setHasMore(false);
+          setLastSparql("");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -177,6 +181,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
       const incoming = payload.items ?? [];
       const total = Number(payload.total) || searchTotal;
       const next = typeof payload.nextCursor === "string" && payload.nextCursor ? payload.nextCursor : null;
+      setLastSparql(typeof payload.sparql === "string" ? payload.sparql : lastSparql);
 
       setItems((prev) => {
         const seen = new Set(prev.map((item) => item.iri));
@@ -199,7 +204,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
     } finally {
       setLoadingMore(false);
     }
-  }, [canSearch, fetchSearchPage, hasMore, loading, loadingMore, nextCursor, searchTotal]);
+  }, [canSearch, fetchSearchPage, hasMore, lastSparql, loading, loadingMore, nextCursor, searchTotal]);
 
   useEffect(() => {
     const element = loadMoreRef.current;
@@ -295,6 +300,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, y
     hasMore,
     items,
     knownAuthorNames,
+    lastSparql,
     loadMoreRef,
     loading,
     loadingMore,

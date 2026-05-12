@@ -253,6 +253,7 @@ describe("GET /api/search", () => {
 
     expect(response.status).toBe(200);
     expect(body.total).toBe(1);
+    expect(body.sparql).toContain('FILTER(?yearText >= "2023")');
     expect(searchQuery).toContain("?paper schema:datePublished ?year0");
     expect(searchQuery).toContain('FILTER(?yearText >= "2023")');
     expect(searchQuery).toContain('FILTER(?yearText <= "2024")');

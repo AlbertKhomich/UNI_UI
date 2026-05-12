@@ -41,6 +41,7 @@ type SearchPayload = {
   nextCursor: string | null;
   authorIri?: string;
   authorName?: string;
+  sparql?: string;
 };
 
 type SearchCursor = {
@@ -876,10 +877,12 @@ export async function GET(req: Request) {
     
         let rows: SparqlRow[] = [];
         let total = 0;
+        let sparql = "";
     
         if (parsed.directPaperIri || parsed.directRisId) {
             const directPaperIri = parsed.directPaperIri ?? paperIriFromId(parsed.directRisId ?? "");
-            const allRows = await sparqlSelect(buildDirectQuery(directPaperIri));
+            sparql = buildDirectQuery(directPaperIri);
+            const allRows = await sparqlSelect(sparql);
             total = allRows.length;
             rows = !cursor && effectiveOffset === 0 ? allRows.slice(0, limit) : [];
         } else {
@@ -909,19 +912,20 @@ export async function GET(req: Request) {
               offset: effectiveOffset,
               cursor,
             });
+            sparql = q1;
             rows = await sparqlSelect(q1);
             if (rows.length === 0 && parsed.titleQ) {
                 modeUsed = "contains";
-                rows = await sparqlSelect(
-                  buildSearchQuery({
+                const q2 = buildSearchQuery({
                     ...parsed,
                     yearRange,
                     mode: modeUsed,
                     limit: fetchLimit,
                     offset: effectiveOffset,
                     cursor,
-                  }),
-                );
+                  });
+                sparql = q2;
+                rows = await sparqlSelect(q2);
             }
 
             const countRows = await sparqlSelect(buildCountQuery({ ...parsed, yearRange, mode: modeUsed }));
@@ -973,6 +977,7 @@ export async function GET(req: Request) {
           items,
           total,
           nextCursor,
+          ...(sparql ? { sparql } : {}),
           ...(directAuthorMeta
             ? { authorIri: directAuthorMeta.iri, authorName: directAuthorMeta.name }
             : {}),

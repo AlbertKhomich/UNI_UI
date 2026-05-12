@@ -37,6 +37,7 @@ export default function HomePage() {
   const [q, setQ] = useState("");
   const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
   const [describeIri, setDescribeIri] = useState<string | null>(null);
+  const [copiedSparql, setCopiedSparql] = useState("");
   const dq = useDebounce(q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -70,6 +71,7 @@ export default function HomePage() {
     hasMore,
     items,
     knownAuthorNames,
+    lastSparql,
     loadMoreRef,
     loading,
     loadingMore,
@@ -162,6 +164,17 @@ export default function HomePage() {
     setQ(`a: ${authorIri}`);
   }
 
+  async function handleCopySparql(): Promise<void> {
+    if (!lastSparql) return;
+    try {
+      await navigator.clipboard.writeText(lastSparql);
+      setCopiedSparql(lastSparql);
+      window.setTimeout(() => setCopiedSparql(""), 1400);
+    } catch {
+      setCopiedSparql("");
+    }
+  }
+
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <div className="mb-4 flex items-start justify-between">
@@ -219,12 +232,15 @@ export default function HomePage() {
         hasItems={items.length > 0}
         loading={loading}
         onApplyPrefix={applySearchPrefix}
+        onCopySparql={() => void handleCopySparql()}
         onQueryChange={handleQueryChange}
         onYearRangeChange={setYearRange}
         prefixButtonClass={prefixButtonClass}
         query={q}
         searchInputClass={searchInputClass}
         searchInputRef={searchInputRef}
+        sparqlCopied={Boolean(lastSparql && copiedSparql === lastSparql)}
+        sparqlCopyDisabled={!lastSparql}
         yearRange={yearRange}
       />
 

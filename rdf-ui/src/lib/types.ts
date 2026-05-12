@@ -12,6 +12,7 @@ export type SearchResponse = {
     nextCursor?: string | null;
     authorIri?: string;
     authorName?: string;
+    sparql?: string;
 }
 
 export type DescribeTerm = {

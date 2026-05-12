@@ -11,12 +11,15 @@ type SearchControlsProps = {
   hasItems: boolean;
   loading: boolean;
   onApplyPrefix: (prefix: SearchPrefix) => void;
+  onCopySparql: () => void;
   onQueryChange: (next: string) => void;
   onYearRangeChange: (next: SearchYearRange) => void;
   prefixButtonClass: string;
   query: string;
   searchInputClass: string;
   searchInputRef: RefObject<HTMLInputElement | null>;
+  sparqlCopied: boolean;
+  sparqlCopyDisabled: boolean;
   yearRange: SearchYearRange;
 };
 
@@ -27,12 +30,15 @@ export default function SearchControls(props: SearchControlsProps) {
     hasItems,
     loading,
     onApplyPrefix,
+    onCopySparql,
     onQueryChange,
     onYearRangeChange,
     prefixButtonClass,
     query,
     searchInputClass,
     searchInputRef,
+    sparqlCopied,
+    sparqlCopyDisabled,
     yearRange,
   } = props;
 
@@ -78,7 +84,7 @@ export default function SearchControls(props: SearchControlsProps) {
         ) : null}
       </div>
 
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" className={prefixButtonClass} onClick={() => onApplyPrefix("a:")}>
           author
         </button>
@@ -87,6 +93,14 @@ export default function SearchControls(props: SearchControlsProps) {
         </button>
         <button type="button" className={prefixButtonClass} onClick={() => onApplyPrefix("c:")}>
           country
+        </button>
+        <button
+          type="button"
+          className={`${prefixButtonClass} disabled:cursor-not-allowed disabled:opacity-50`}
+          disabled={sparqlCopyDisabled}
+          onClick={onCopySparql}
+        >
+          {sparqlCopied ? "Copied" : "Copy SPARQL"}
         </button>
       </div>
 
