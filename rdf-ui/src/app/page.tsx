@@ -24,6 +24,8 @@ import {
 
 export { initialDescribeIriFromLocation, initialQueryFromLocation, toSearchQueryFromIri };
 
+type SearchYearRange = [string, string];
+
 function toPossessive(name: string): string {
   const n = name.trim();
   if (!n) return "Author's";
@@ -33,6 +35,7 @@ function toPossessive(name: string): string {
 
 export default function HomePage() {
   const [q, setQ] = useState("");
+  const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
   const [describeIri, setDescribeIri] = useState<string | null>(null);
   const dq = useDebounce(q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -55,6 +58,9 @@ export default function HomePage() {
     return iri ? canonicalizeUpbkgIri(iri) : null;
   }, [dq]);
 
+  const yearFrom = yearRange[0].length === 4 ? yearRange[0] : "";
+  const yearTo = yearRange[1].length === 4 ? yearRange[1] : "";
+
   const {
     canSearch,
     details,
@@ -74,6 +80,8 @@ export default function HomePage() {
   } = useSearchState({
     debouncedQuery: dq,
     debouncedAuthorIri,
+    yearFrom,
+    yearTo,
   });
   const {
     body: describeBody,
@@ -212,10 +220,12 @@ export default function HomePage() {
         loading={loading}
         onApplyPrefix={applySearchPrefix}
         onQueryChange={handleQueryChange}
+        onYearRangeChange={setYearRange}
         prefixButtonClass={prefixButtonClass}
         query={q}
         searchInputClass={searchInputClass}
         searchInputRef={searchInputRef}
+        yearRange={yearRange}
       />
 
       {describeIri ? (

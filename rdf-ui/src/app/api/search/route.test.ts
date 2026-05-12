@@ -224,6 +224,42 @@ describe("GET /api/search", () => {
     expect(countQuery).toContain('"sammelband"');
   });
 
+  it("applies year range filters to search and count queries", async () => {
+    let searchQuery = "";
+    let countQuery = "";
+
+    mockedSparqlSelect.mockImplementation(async (query: string) => {
+      if (query.includes("COUNT(DISTINCT ?paper)")) {
+        countQuery = query;
+        return [{ total: { type: "literal", value: "1" } }];
+      }
+
+      searchQuery = query;
+      return [
+        {
+          paper: { type: "uri", value: "http://upbkg.data.dice-research.org/id/publication/ris/421" },
+          title: { type: "literal", value: "Range Filtered Paper" },
+          year: { type: "literal", value: "2024" },
+          authors: { type: "literal", value: "Doe, Jane" },
+          authorIris: { type: "literal", value: "http://upbkg.data.dice-research.org/id/author/hash/aa1" },
+        },
+      ] as SparqlRow[];
+    });
+
+    const response = await GET(
+      new Request("http://localhost/api/search?q=range&yearFrom=2023&yearTo=2024"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.total).toBe(1);
+    expect(searchQuery).toContain("?paper schema:datePublished ?year0");
+    expect(searchQuery).toContain('FILTER(?yearText >= "2023")');
+    expect(searchQuery).toContain('FILTER(?yearText <= "2024")');
+    expect(countQuery).toContain('FILTER(?yearText >= "2023")');
+    expect(countQuery).toContain('FILTER(?yearText <= "2024")');
+  });
+
   it("matches comma-separated author names when the query omits punctuation", async () => {
     let searchQuery = "";
 

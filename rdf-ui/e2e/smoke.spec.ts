@@ -162,7 +162,7 @@ test("search, open details, country filter, load more, and theme persistence", a
 
   await page.goto("/");
 
-  const searchInput = page.getByPlaceholder("Search paper title... (a:, y:, aff:, c:)");
+  const searchInput = page.getByPlaceholder("Search paper title... (a:, aff:, c:)");
   const firstSearchResponse = page.waitForResponse(
     (response) =>
       matchesApiRequest(response.url(), "/api/search", {

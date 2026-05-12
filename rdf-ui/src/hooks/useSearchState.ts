@@ -10,6 +10,8 @@ const PAGE_SIZE = 25;
 type UseSearchStateArgs = {
   debouncedQuery: string;
   debouncedAuthorIri: string | null;
+  yearFrom: string;
+  yearTo: string;
 };
 
 function dedupeByIri(items: SearchItem[]): SearchItem[] {
@@ -55,7 +57,7 @@ async function toFriendlyHttpError(response: Response, fallback: string): Promis
   return `${fallback} (HTTP ${response.status})`;
 }
 
-export function useSearchState({ debouncedQuery, debouncedAuthorIri }: UseSearchStateArgs) {
+export function useSearchState({ debouncedQuery, debouncedAuthorIri, yearFrom, yearTo }: UseSearchStateArgs) {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const [items, setItems] = useState<SearchItem[]>([]);
@@ -73,7 +75,10 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri }: UseSearch
 
   const [knownAuthorNames, setKnownAuthorNames] = useState<Record<string, string>>({});
 
-  const canSearch = useMemo(() => debouncedQuery.trim().length >= 3, [debouncedQuery]);
+  const canSearch = useMemo(
+    () => debouncedQuery.trim().length >= 3 || Boolean(yearFrom || yearTo),
+    [debouncedQuery, yearFrom, yearTo],
+  );
 
   const fetchSearchPage = useCallback(
     async (cursor: string | null): Promise<SearchResponse> => {
@@ -82,6 +87,8 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri }: UseSearch
         limit: String(PAGE_SIZE),
       });
       if (cursor) params.set("cursor", cursor);
+      if (yearFrom) params.set("yearFrom", yearFrom);
+      if (yearTo) params.set("yearTo", yearTo);
 
       const response = await fetch(`/api/search?${params.toString()}`);
       if (!response.ok) throw new Error(await toFriendlyHttpError(response, "Search failed"));
@@ -93,7 +100,7 @@ export function useSearchState({ debouncedQuery, debouncedAuthorIri }: UseSearch
 
       return (await response.json()) as SearchResponse;
     },
-    [debouncedQuery],
+    [debouncedQuery, yearFrom, yearTo],
   );
 
   useEffect(() => {

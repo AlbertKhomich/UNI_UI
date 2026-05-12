@@ -48,6 +48,11 @@ type SearchCursor = {
   paper: string;
 };
 
+type YearRangeFilter = {
+  from: string;
+  to: string;
+};
+
 type CacheEntry = { ts: number; value: SearchPayload };
 const cache = new Map<string, CacheEntry>();
 
@@ -102,6 +107,45 @@ function decodeSearchCursor(raw: string): SearchCursor | null {
   } catch {
     return null;
   }
+}
+
+function normalizeYearParam(raw: string | null): string {
+  const value = (raw ?? "").trim();
+  return /^\d{4}$/.test(value) ? value : "";
+}
+
+function readYearRange(url: URL): YearRangeFilter | null {
+  let from = normalizeYearParam(url.searchParams.get("yearFrom"));
+  let to = normalizeYearParam(url.searchParams.get("yearTo"));
+  if (!from && !to) return null;
+  if (from && to && from > to) [from, to] = [to, from];
+  return { from, to };
+}
+
+function buildDatePublishedPattern(yearQ: string, yearRange: YearRangeFilter | null): string {
+  if (!yearQ && !yearRange) {
+    return `
+        OPTIONAL { ?paper schema:datePublished ?year0 . }
+        `;
+  }
+
+  const exactYearFilter = yearQ
+    ? `FILTER(STR(?year0) = ${escapeSparqlStringLiteral(yearQ)})`
+    : "";
+  const rangeFilter = yearRange
+    ? `
+        BIND(SUBSTR(STR(?year0), 1, 4) AS ?yearText)
+        FILTER(REGEX(?yearText, "^\\\\d{4}$"))
+        ${yearRange.from ? `FILTER(?yearText >= ${escapeSparqlStringLiteral(yearRange.from)})` : ""}
+        ${yearRange.to ? `FILTER(?yearText <= ${escapeSparqlStringLiteral(yearRange.to)})` : ""}
+        `
+    : "";
+
+  return `
+        ?paper schema:datePublished ?year0 .
+        ${exactYearFilter}
+        ${rangeFilter}
+        `;
 }
 
 function normalizeLooseText(value: string): string {
@@ -641,6 +685,7 @@ function buildSearchQuery(args: {
     affiliationQ: string;
     countryQ: string;
     countryCodes: string[];
+    yearRange: YearRangeFilter | null;
     directAuthorIri?: string | null;
     mode: "starts" | "contains";
     limit: number;
@@ -654,6 +699,7 @@ function buildSearchQuery(args: {
       affiliationQ,
       countryQ,
       countryCodes,
+      yearRange,
       directAuthorIri,
       mode,
       limit,
@@ -662,7 +708,6 @@ function buildSearchQuery(args: {
     } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
-    const yearLit = yearQ ? escapeSparqlStringLiteral(yearQ) : "";
 
     const titleFilter = 
     titleQ
@@ -671,14 +716,7 @@ function buildSearchQuery(args: {
           : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(${titleLit})))`)
       : "";
 
-    const yearPattern = yearQ
-      ? `
-        ?paper schema:datePublished ?year0 .
-        FILTER(STR(?year0) = ${yearLit})
-        `
-      : `
-        OPTIONAL { ?paper schema:datePublished ?year0 . }
-        `;
+    const yearPattern = buildDatePublishedPattern(yearQ, yearRange);
 
     const authorIriFilter = directAuthorIri ? buildDirectAuthorIriFilter(directAuthorIri) : "";
 
@@ -757,13 +795,13 @@ function buildCountQuery(args: {
     affiliationQ: string;
     countryQ: string;
     countryCodes: string[];
+    yearRange: YearRangeFilter | null;
     directAuthorIri?: string | null;
     mode: "starts" | "contains";
 }) {
-    const { titleQ, authorQ, yearQ, affiliationQ, countryQ, countryCodes, directAuthorIri, mode } = args;
+    const { titleQ, authorQ, yearQ, affiliationQ, countryQ, countryCodes, yearRange, directAuthorIri, mode } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
-    const yearLit = yearQ ? escapeSparqlStringLiteral(yearQ) : "";
 
     const titleFilter =
       titleQ
@@ -772,14 +810,7 @@ function buildCountQuery(args: {
             : `FILTER(CONTAINS(LCASE(STR(?name)), LCASE(${titleLit})))`)
         : "";
 
-    const yearPattern = yearQ
-      ? `
-        ?paper schema:datePublished ?year0 .
-        FILTER(STR(?year0) = ${yearLit})
-        `
-      : `
-        OPTIONAL { ?paper schema:datePublished ?year0 . }
-        `;
+    const yearPattern = buildDatePublishedPattern(yearQ, yearRange);
 
     const authorIriFilter = directAuthorIri ? buildDirectAuthorIriFilter(directAuthorIri) : "";
 
@@ -822,7 +853,8 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url);
         const raw = (url.searchParams.get("q") ?? url.searchParams.get("title") ?? "").trim();
-        if (!raw) return NextResponse.json({ items: [], total: 0, nextCursor: null });
+        const yearRange = readYearRange(url);
+        if (!raw && !yearRange) return NextResponse.json({ items: [], total: 0, nextCursor: null });
 
         if (raw.length > 300) return NextResponse.json({ error: "Querry too long" }, {status: 400 });
         const rawCursor = (url.searchParams.get("cursor") ?? "").trim();
@@ -835,7 +867,7 @@ export async function GET(req: Request) {
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|yf=${yearRange?.from ?? ""}|yt=${yearRange?.to ?? ""}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
         const directAuthorMetaPromise = parsed.directAuthorIri
@@ -855,6 +887,7 @@ export async function GET(req: Request) {
               !parsed.titleQ &&
               !parsed.authorQ &&
               !parsed.yearQ &&
+              !yearRange &&
               !parsed.affiliationQ &&
               !parsed.countryQ &&
               !parsed.directAuthorIri
@@ -870,6 +903,7 @@ export async function GET(req: Request) {
 
             const q1 = buildSearchQuery({
               ...parsed,
+              yearRange,
               mode: modeUsed,
               limit: fetchLimit,
               offset: effectiveOffset,
@@ -881,6 +915,7 @@ export async function GET(req: Request) {
                 rows = await sparqlSelect(
                   buildSearchQuery({
                     ...parsed,
+                    yearRange,
                     mode: modeUsed,
                     limit: fetchLimit,
                     offset: effectiveOffset,
@@ -889,7 +924,7 @@ export async function GET(req: Request) {
                 );
             }
 
-            const countRows = await sparqlSelect(buildCountQuery({ ...parsed, mode: modeUsed }));
+            const countRows = await sparqlSelect(buildCountQuery({ ...parsed, yearRange, mode: modeUsed }));
             total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
 
