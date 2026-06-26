@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react"
 import CountryPopularityMap from "@/components/CountryPopularityMap";
 import { Row } from "@/lib/types";
@@ -23,11 +25,13 @@ function darkenColorSlightly(input: string): string {
 }
 
 export default function UsersByCountryWidget({
+    loading = false,
     rows,
     totalOverride,
     theme = "dark",
     onCountryClick,
 }: {
+    loading?: boolean;
     rows: Row[];
     totalOverride: number;
     theme?: Theme;
@@ -36,6 +40,7 @@ export default function UsersByCountryWidget({
     const [showAll, setShowAll] = React.useState(false);
     const [showMap, setShowMap] = React.useState(false);
     const isDark = theme === "dark";
+    const isReady = !loading && rows.length > 0;
 
     const denomDonut = rows.reduce((sum, r) => sum + (Number(r.value) || 0), 0);
     
@@ -118,23 +123,38 @@ export default function UsersByCountryWidget({
 
     return (
         <div className={`mt-4 w-full rounded-xl border p-6 ${isDark ? "border-gray-600" : "border-gray-300"}`}>
-            <div className="text-lg font-semibold">Papers by countries</div>
+            <div className="flex items-center justify-between gap-3">
+                <div className="text-lg font-semibold">Papers by countries</div>
+            </div>
     
             {/* <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-[260px_1fr] md:items-center"> */}
             <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-[260px_1fr] md:items-start">
                 <div className="flex items-start justify-center md:justify-self-start md:justify-start">
                 {/* <div className="flex items-center justify-center md:justify-start"> */}
                     <div className="relative h-56 w-56">
-                        <div 
-                            className="absolute inset-0 rounded-full"
+                        <div
+                            className={`absolute inset-0 rounded-full ${sortedRows.length > 0 ? "country-donut-ready" : ""}`}
                             style={{ backgroundImage: donutBg }}
                         />
                         <div className={`absolute inset-[18px] rounded-full ${isDark ? "bg-black" : "bg-white"}`} />
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                            <div className={`text-4xl font-semibold tracking-tight ${isDark ? "text-white/85" : "text-slate-800"}`}>
-                                {formatCompact(totalOverride)}
-                            </div>
-                            <div className={`mt-1 text-sm ${isDark ? "text-white/45" : "text-slate-500"}`}>Total</div>
+                            {loading ? (
+                                <div className="flex flex-col items-center gap-2 text-sm text-gray-500">
+                                    <span className="country-loading-dots" aria-hidden="true">
+                                        <span />
+                                        <span />
+                                        <span />
+                                    </span>
+                                    <span>Loading...</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className={`text-4xl font-semibold tracking-tight ${isDark ? "text-white/85" : "text-slate-800"}`}>
+                                        {formatCompact(totalOverride)}
+                                    </div>
+                                    <div className={`mt-1 text-sm ${isDark ? "text-white/45" : "text-slate-500"}`}>Total</div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -150,7 +170,11 @@ export default function UsersByCountryWidget({
                                 : r.color ?? fallbackBarColor;
                         const canClickCountry = Boolean(onCountryClick && r.code);
                         return (
-                            <div key={r.code ? `${r.code}-${idx}` : `${r.name}-${idx}`} className="space-y-2">
+                            <div
+                                key={r.code ? `${r.code}-${idx}` : `${r.name}-${idx}`}
+                                className="country-row-enter space-y-2"
+                                style={{ animationDelay: `${idx * 55}ms` }}
+                            >
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         {canClickCountry ? (
@@ -172,11 +196,11 @@ export default function UsersByCountryWidget({
             
                                 <div className={`h-2 w-full rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}>
                                     <div
-                                        className="h-2 rounded-full"
+                                        className="country-bar-fill h-2 rounded-full"
                                         style={{
-                                            width: `${pct}%`,
+                                            "--country-bar-width": `${pct}%`,
                                             backgroundColor: progressColor,
-                                        }}
+                                        } as React.CSSProperties}
                                     />
                                 </div>
                             </div>
@@ -196,21 +220,23 @@ export default function UsersByCountryWidget({
                                 {showAll ? "Show less countries" : "Show all countries"}
                             </button>
                         ) : null}
-                        <button
-                            type="button"
-                            className={`rounded-xl border bg-transparent px-3 py-3 text-base transition-colors ${
-                                isDark
-                                    ? "border-gray-500 hover:bg-gray-800"
-                                    : "border-gray-300 hover:bg-gray-100"
-                            }`}
-                            onClick={() => setShowMap((v) => !v)}
-                        >
-                            {showMap ? "Hide country map" : "Show country map"}
-                        </button>
+                        {isReady ? (
+                            <button
+                                type="button"
+                                className={`rounded-xl border bg-transparent px-3 py-3 text-base transition-colors ${
+                                    isDark
+                                        ? "border-gray-500 hover:bg-gray-800"
+                                        : "border-gray-300 hover:bg-gray-100"
+                                }`}
+                                onClick={() => setShowMap((v) => !v)}
+                            >
+                                {showMap ? "Hide country map" : "Show country map"}
+                            </button>
+                        ) : null}
                     </div>
                 </div>
             </div>
-            {showMap ? (
+            {showMap && isReady ? (
                 <div className={`mt-6 border-t pt-6 ${isDark ? "border-gray-700" : "border-gray-200"}`}>
                     <CountryPopularityMap
                         rows={sortedRows}

@@ -27,7 +27,7 @@ function ccToColor(rank: number, theme: Theme): string {
 
 export function useCountryStats(theme: Theme) {
   const [countryRows, setCountryRows] = useState<Row[]>([]);
-  const [countryLoading, setCountryLoading] = useState(false);
+  const [countryLoading, setCountryLoading] = useState(true);
   const [countryErr, setCountryErr] = useState<string | null>(null);
   const [totalPapers, setTotalPapers] = useState<number>(0);
 
