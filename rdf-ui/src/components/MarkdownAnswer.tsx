@@ -124,7 +124,11 @@ function renderLatex(raw: string, displayMode: boolean, key: string): ReactNode 
     return (
       <span
         key={key}
-        className={displayMode ? "my-3 block overflow-x-auto" : "inline-block max-w-full overflow-x-auto align-middle"}
+        className={
+          displayMode
+            ? "my-3 block max-w-full overflow-x-auto overflow-y-hidden"
+            : "inline inline-baseline overflow-visible"
+        }
         dangerouslySetInnerHTML={{
           __html: katex.renderToString(raw, {
             displayMode,
