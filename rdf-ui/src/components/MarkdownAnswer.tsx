@@ -119,19 +119,6 @@ function renderDocumentSourceButtons(rawCitation: string, sources: RagSource[]):
   });
 }
 
-function renderGraphSourceButtons(rawSources: string, sources: RagSource[]): ReactNode[] | null {
-  const requested = rawSources.split(",").map((source) => source.trim().toLowerCase()).filter(Boolean);
-  if (requested.length === 0) return null;
-
-  const matches = sources.filter((source) => {
-    const label = source.label?.toLowerCase() ?? "";
-    return requested.some((requestedSource) => label.startsWith(requestedSource));
-  });
-
-  if (matches.length === 0) return null;
-  return matches.map((source, index) => sourceChip(source, index, `graph-${source.label ?? index}`));
-}
-
 function renderLatex(raw: string, displayMode: boolean, key: string): ReactNode {
   try {
     return (
@@ -153,7 +140,7 @@ function renderLatex(raw: string, displayMode: boolean, key: string): ReactNode 
 
 function renderInline(text: string, sources: RagSource[]): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]((?:\((https?:\/\/[^\s)]+|www\.[^\s)]+)\)))|\[((?:https?:\/\/|www\.)[^\]\s),]+)\]|\[([^\]]*doc\s+[^\]]+)\]|Sources:\s*((?:Triples?|Entities?)(?:,\s*(?:Triples?|Entities?))*)|((?:https?:\/\/|www\.)[^\s),]+|10\.\d{4,9}\/[^\s),]+))/gi;
+  const pattern = /(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]((?:\((https?:\/\/[^\s)]+|www\.[^\s)]+)\)))|\[((?:https?:\/\/|www\.)[^\]\s),]+)\]|\[([^\]]*doc\s+[^\]]+)\]|((?:https?:\/\/|www\.)[^\s),]+|10\.\d{4,9}\/[^\s),]+))/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -196,10 +183,7 @@ function renderInline(text: string, sources: RagSource[]): ReactNode[] {
       const sourceButtons = renderDocumentSourceButtons(match[10], sources);
       nodes.push(sourceButtons ?? `[${match[10]}]`);
     } else if (match[11]) {
-      const sourceButtons = renderGraphSourceButtons(match[11], sources);
-      nodes.push("Sources: ", sourceButtons ?? match[11]);
-    } else if (match[12]) {
-      nodes.push(...renderBareLink(match[12], `uri-${match.index}`));
+      nodes.push(...renderBareLink(match[11], `uri-${match.index}`));
     }
 
     lastIndex = pattern.lastIndex;
