@@ -186,7 +186,11 @@ export default function SearchControls(props: SearchControlsProps) {
             {aiError && <span className="text-red-600">{aiError}</span>}
             {aiAnswer ? (
               <div className="mt-2 whitespace-pre-wrap rounded-xl border border-gray-200 p-3 text-sm leading-6 dark:border-gray-700">
-                <MarkdownAnswer sources={aiSources} text={aiAnswer} />
+                <MarkdownAnswer
+                  sources={aiSources}
+                  tail={aiLoading ? <span className="ml-0.5 animate-pulse">▍</span> : undefined}
+                  text={aiAnswer}
+                />
               </div>
             ) : null}
           </>

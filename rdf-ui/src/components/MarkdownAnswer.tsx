@@ -12,6 +12,7 @@ type RagSource = {
 
 type MarkdownAnswerProps = {
   sources?: RagSource[];
+  tail?: ReactNode;
   text: string;
 };
 
@@ -142,7 +143,7 @@ function renderLatex(raw: string, displayMode: boolean, key: string): ReactNode 
   }
 }
 
-function renderInline(text: string, sources: RagSource[]): ReactNode[] {
+function renderInline(text: string, sources: RagSource[], depth = 0): ReactNode[] {
   const nodes: ReactNode[] = [];
   const pattern = /(\$\$([^$]+)\$\$|\$([^$\n]+)\$|\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]((?:\((https?:\/\/[^\s)]+|www\.[^\s)]+)\)))|\[((?:https?:\/\/|www\.)[^\]\s),]+)\]|\[([^\]]*doc\s+[^\]]+)\]|((?:https?:\/\/|www\.)[^\s),]+|10\.\d{4,9}\/[^\s),]+))/gi;
   let lastIndex = 0;
@@ -156,7 +157,11 @@ function renderInline(text: string, sources: RagSource[]): ReactNode[] {
     } else if (match[3]) {
       nodes.push(renderLatex(match[3], false, `latex-inline-${match.index}`));
     } else if (match[4]) {
-      nodes.push(<strong key={match.index}>{match[4]}</strong>);
+      nodes.push(
+        <strong key={match.index}>
+          {depth > 4 ? match[4] : renderInline(match[4], sources, depth + 1)}
+        </strong>,
+      );
     } else if (match[5]) {
       if (isLinkLike(match[5])) {
         nodes.push(...renderBareLink(match[5], `code-link-${match.index}`));
@@ -197,10 +202,11 @@ function renderInline(text: string, sources: RagSource[]): ReactNode[] {
   return nodes;
 }
 
-export default function MarkdownAnswer({ sources = [], text }: MarkdownAnswerProps) {
+export default function MarkdownAnswer({ sources = [], tail, text }: MarkdownAnswerProps) {
   const lines = text.split(/\r?\n/);
+  const lastContentLineIndex = lines.reduce((lastIndex, line, index) => (line.trim() ? index : lastIndex), -1);
   const blocks: ReactNode[] = [];
-  let listItems: string[] = [];
+  let listItems: Array<{ text: string; tail?: ReactNode }> = [];
 
   function flushList(keyPrefix: string): void {
     if (listItems.length === 0) return;
@@ -209,7 +215,10 @@ export default function MarkdownAnswer({ sources = [], text }: MarkdownAnswerPro
     blocks.push(
       <ul key={`${keyPrefix}-${blocks.length}`} className="list-disc space-y-1 pl-5">
         {items.map((item, index) => (
-          <li key={`${keyPrefix}-${index}`}>{renderInline(item, sources)}</li>
+          <li key={`${keyPrefix}-${index}`}>
+            {renderInline(item.text, sources)}
+            {item.tail}
+          </li>
         ))}
       </ul>,
     );
@@ -220,7 +229,7 @@ export default function MarkdownAnswer({ sources = [], text }: MarkdownAnswerPro
     const bullet = trimmed.match(/^[-*]\s+(.+)$/);
 
     if (bullet?.[1]) {
-      listItems.push(bullet[1]);
+      listItems.push({ text: bullet[1], tail: index === lastContentLineIndex ? tail : undefined });
       return;
     }
 
@@ -230,6 +239,7 @@ export default function MarkdownAnswer({ sources = [], text }: MarkdownAnswerPro
     blocks.push(
       <p key={`p-${index}`} className="leading-6">
         {renderInline(trimmed, sources)}
+        {index === lastContentLineIndex ? tail : null}
       </p>,
     );
   });

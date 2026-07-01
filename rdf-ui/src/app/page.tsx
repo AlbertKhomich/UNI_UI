@@ -34,6 +34,13 @@ type RagSource = {
   filename?: string;
   page?: number;
 };
+type RagStreamEvent = {
+  type?: unknown;
+  text?: unknown;
+  error?: unknown;
+  citations?: unknown;
+  sources?: unknown;
+};
 
 function toPossessive(name: string): string {
   const n = name.trim();
@@ -76,33 +83,47 @@ function isRagAttachmentInFlight(status: RagDocumentStatus): boolean {
   return ["uploading", "pending", "parsing", "chunking", "embedding"].includes(status);
 }
 
-function readAnswer(payload: unknown): string {
-  if (typeof payload === "string") return payload;
-  if (!isRecord(payload)) return "";
-
-  for (const key of ["answer", "response", "text", "message"]) {
-    const value = payload[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+function readOptionalString(value: unknown, keys: string[]): string | undefined {
+  if (!isRecord(value)) return undefined;
+  for (const key of keys) {
+    const next = value[key];
+    if (typeof next === "string" && next.trim()) return next.trim();
   }
+  return undefined;
+}
 
-  return JSON.stringify(payload, null, 2);
+function readOptionalNumber(value: unknown, keys: string[]): number | undefined {
+  if (!isRecord(value)) return undefined;
+  for (const key of keys) {
+    const next = value[key];
+    if (typeof next === "number") return next;
+  }
+  return undefined;
+}
+
+function readDocumentSource(source: unknown): RagSource[] {
+  if (!isRecord(source)) return [];
+
+  const chunkId = readOptionalString(source, ["chunk_id", "chunkId", "id"]);
+  const documentId = readOptionalString(source, ["document_id", "documentId", "document"]);
+  if (!chunkId || !documentId) return [];
+
+  return [{
+    chunk_id: chunkId,
+    document_id: documentId,
+    filename: readOptionalString(source, ["filename", "file_name", "fileName"]),
+    page: readOptionalNumber(source, ["page", "page_number", "pageNumber"]),
+  }];
 }
 
 function readSources(payload: unknown): RagSource[] {
   if (!isRecord(payload)) return [];
 
-  const documentSources = Array.isArray(payload.sources) ? payload.sources.flatMap((source) => {
-    if (!isRecord(source) || typeof source.chunk_id !== "string" || !source.chunk_id.trim()) return [];
-
-    return [{
-      chunk_id: source.chunk_id.trim(),
-      document_id: typeof source.document_id === "string" ? source.document_id : undefined,
-      filename: typeof source.filename === "string" ? source.filename : undefined,
-      page: typeof source.page === "number" ? source.page : undefined,
-    }];
-  }) : [];
-
   const citations = isRecord(payload.citations) ? payload.citations : null;
+  const documentSources = [
+    ...(Array.isArray(payload.sources) ? payload.sources.flatMap(readDocumentSource) : []),
+    ...(citations && Array.isArray(citations.chunks) ? citations.chunks.flatMap(readDocumentSource) : []),
+  ];
   const entities = citations && Array.isArray(citations.entities)
     ? citations.entities.filter((entity): entity is string => typeof entity === "string" && entity.trim().length > 0)
     : [];
@@ -127,6 +148,49 @@ async function readApiJson(response: Response, fallback: string): Promise<unknow
     throw new Error(message);
   }
   return payload;
+}
+
+async function readRagStream(response: Response, onEvent: (event: RagStreamEvent) => void): Promise<void> {
+  if (!response.ok) {
+    await readApiJson(response, "Failed to ask RAG session");
+    return;
+  }
+
+  if (!response.body) throw new Error("RAG stream response did not include a body.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const handleEvent = (event: RagStreamEvent): boolean => {
+    onEvent(event);
+    if (event.type === "error") {
+      throw new Error(typeof event.error === "string" ? event.error : "Failed to ask RAG session");
+    }
+    return event.type === "done";
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as RagStreamEvent;
+      if (handleEvent(event)) {
+        await reader.cancel().catch(() => undefined);
+        return;
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer) as RagStreamEvent;
+    handleEvent(event);
+  }
 }
 
 export default function HomePage() {
@@ -327,16 +391,23 @@ export default function HomePage() {
 
     setAiLoading(true);
     setAiError(null);
+    setAiAnswer("");
+    setAiSources([]);
 
     try {
-      const response = await fetch("/api/rag/ask", {
+      const response = await fetch("/api/rag/ask-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
       });
-      const payload = await readApiJson(response, "Failed to ask RAG session");
-      setAiAnswer(readAnswer(payload));
-      setAiSources(readSources(payload));
+      await readRagStream(response, (event) => {
+        if (event.type === "token" && typeof event.text === "string") {
+          setAiAnswer((answer) => `${answer}${event.text}`);
+        }
+        if (event.type === "done") {
+          setAiSources(readSources(event));
+        }
+      });
     } catch (error: unknown) {
       setAiError(error instanceof Error ? error.message : "Failed to ask RAG session");
     } finally {
