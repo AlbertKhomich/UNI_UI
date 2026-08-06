@@ -41,6 +41,14 @@ function escapeMarkdownLabel(label: string): string {
   return label.replace(/([\\[\]])/g, "\\$1");
 }
 
+function normalizeMathDelimiters(text: string): string {
+  return text
+    .replace(/\\\[/g, () => "$$")
+    .replace(/\\\]/g, () => "$$")
+    .replace(/\\\(/g, "$")
+    .replace(/\\\)/g, "$");
+}
+
 function addSourceLinks(text: string, sources: RagSource[]): string {
   return text.replace(/\[([^\]]*doc\s+[^\]]+)\]/gi, (citation) => {
     const ids = Array.from(citation.matchAll(/doc\s+([A-Za-z0-9-]+)(?:#[\w.-]+)?/gi), (match) => match[1]);
@@ -62,23 +70,17 @@ function addSourceLinks(text: string, sources: RagSource[]): string {
 }
 
 export default function MarkdownAnswer({ sources = [], tail, text }: MarkdownAnswerProps) {
-  const markdown = `${addSourceLinks(text, sources)}${tail ? `[\u200b](${STREAM_TAIL_HREF})` : ""}`;
-  const sourceHrefs = new Set(sources.flatMap((source) => sourceHref(source) ?? []));
+  const markdown = `${normalizeMathDelimiters(addSourceLinks(text, sources))}${tail ? `[\u200b](${STREAM_TAIL_HREF})` : ""}`;
   const components: Components = {
     a: ({ children, href }) => {
       if (href === STREAM_TAIL_HREF) return tail;
-      const isSource = href ? sourceHrefs.has(href) : false;
 
       return (
         <a
           href={href}
           target="_blank"
           rel="noreferrer"
-          className={
-            isSource
-              ? "mx-0.5 inline-flex h-5 max-w-28 items-center overflow-hidden rounded-full border border-gray-300 px-1.5 text-[10px] leading-none text-gray-600 no-underline transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-              : "underline underline-offset-2"
-          }
+          className="underline underline-offset-2"
         >
           {children}
         </a>

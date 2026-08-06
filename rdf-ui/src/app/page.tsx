@@ -457,6 +457,10 @@ export default function HomePage() {
     await copyShareUrl(url.toString());
   }
 
+  async function handleCopyAiAnswer(): Promise<void> {
+    await copyShareUrl(aiAnswer);
+  }
+
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <div className="mb-4 flex items-start justify-between">
@@ -518,6 +522,7 @@ export default function HomePage() {
         loading={loading}
         onApplyPrefix={applySearchPrefix}
         onAskAi={handleAskAi}
+        onCopyAiAnswer={handleCopyAiAnswer}
         onQueryChange={handleQueryChange}
         onToggleAi={handleToggleAi}
         onUploadDocument={handleUploadDocument}

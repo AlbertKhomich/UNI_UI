@@ -1,8 +1,9 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { BiSolidZap } from "react-icons/bi";
 import { FiSend, FiUpload } from "react-icons/fi";
+import { FaRegCopy } from "react-icons/fa";
 import BeatLoader from "react-spinners/BeatLoader";
 import MarkdownAnswer from "@/components/MarkdownAnswer";
 import ToggleSwitch from "@/components/ToggleSwitch";
@@ -31,6 +32,7 @@ type SearchControlsProps = {
   loading: boolean;
   onApplyPrefix: (prefix: SearchPrefix) => void;
   onAskAi: () => void;
+  onCopyAiAnswer: () => Promise<void>;
   onToggleAi: (enabled: boolean) => void;
   onUploadDocument: (files: File[]) => void;
   onQueryChange: (next: string) => void;
@@ -56,6 +58,7 @@ export default function SearchControls(props: SearchControlsProps) {
     loading,
     onApplyPrefix,
     onAskAi,
+    onCopyAiAnswer,
     onToggleAi,
     onUploadDocument,
     onQueryChange,
@@ -68,10 +71,21 @@ export default function SearchControls(props: SearchControlsProps) {
   } = props;
 
   const [yearFrom, yearTo] = yearRange;
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const yearInputClass = `${prefixButtonClass} w-24 appearance-none text-center outline-none`;
   const attachmentInFlight = ["uploading", "pending", "parsing", "chunking", "embedding"].includes(aiDocumentStatus);
   const showWorking = aiLoading || attachmentInFlight;
   const askDisabled = aiLoading || attachmentInFlight || query.trim().length === 0;
+
+  async function handleCopyAnswer(): Promise<void> {
+    try {
+      await onCopyAiAnswer();
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+    window.setTimeout(() => setCopyStatus("idle"), 1800);
+  }
 
   return (
     <>
@@ -186,6 +200,18 @@ export default function SearchControls(props: SearchControlsProps) {
             {aiError && <span className="text-red-600">{aiError}</span>}
             {aiAnswer ? (
               <div className="mt-2 whitespace-pre-wrap rounded-xl border border-gray-200 p-3 text-sm leading-6 dark:border-gray-700">
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-500 dark:text-gray-100 dark:hover:bg-gray-800"
+                    aria-label="Copy AI answer"
+                    title="Copy AI answer"
+                    onClick={() => void handleCopyAnswer()}
+                  >
+                    <FaRegCopy size={14} aria-hidden="true" />
+                    <span>{copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy"}</span>
+                  </button>
+                </div>
                 <MarkdownAnswer
                   sources={aiSources}
                   tail={aiLoading ? <span className="ml-0.5 animate-pulse">▍</span> : undefined}
