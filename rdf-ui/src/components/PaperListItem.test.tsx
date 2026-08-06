@@ -38,6 +38,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={onTogglePaperOpen}
       />,
     );
@@ -62,6 +63,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={vi.fn()}
       />,
     );
@@ -78,6 +80,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={vi.fn()}
       />,
     );

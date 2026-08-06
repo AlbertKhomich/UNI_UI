@@ -16,6 +16,7 @@ type PaperResultsListProps = {
   loadMoreRef: RefObject<HTMLDivElement | null>;
   loadingMore: boolean;
   onSelectAuthor: (iri: string, name: string) => void;
+  onSharePaper: (title: string) => Promise<void>;
   onTogglePaperOpen: (id: string) => void;
   openIds: Set<string>;
   subtleTextClass: string;
@@ -34,6 +35,7 @@ export default function PaperResultsList(props: PaperResultsListProps) {
     loadMoreRef,
     loadingMore,
     onSelectAuthor,
+    onSharePaper,
     onTogglePaperOpen,
     openIds,
     subtleTextClass,
@@ -53,6 +55,7 @@ export default function PaperResultsList(props: PaperResultsListProps) {
             item={item}
             loadingDetails={!!detailsLoading[item.id]}
             onSelectAuthor={onSelectAuthor}
+            onSharePaper={onSharePaper}
             onTogglePaperOpen={onTogglePaperOpen}
           />
         ))}

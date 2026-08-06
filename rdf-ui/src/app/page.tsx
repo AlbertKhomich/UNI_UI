@@ -33,6 +33,28 @@ function toPossessive(name: string): string {
   return `${n}'s`;
 }
 
+async function copyShareUrl(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back for browsers that expose the API but deny it outside a secure context.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard copy failed");
+}
+
 export default function HomePage() {
   const [q, setQ] = useState("");
   const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
@@ -162,6 +184,12 @@ export default function HomePage() {
     setQ(`a: ${authorIri}`);
   }
 
+  async function handleSharePaper(title: string): Promise<void> {
+    const url = new URL("/share", window.location.origin);
+    url.searchParams.set("q", title);
+    await copyShareUrl(url.toString());
+  }
+
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <div className="mb-4 flex items-start justify-between">
@@ -254,6 +282,7 @@ export default function HomePage() {
         loadMoreRef={loadMoreRef}
         loadingMore={loadingMore}
         onSelectAuthor={handleAuthorSelect}
+        onSharePaper={handleSharePaper}
         onTogglePaperOpen={togglePaperOpen}
         openIds={openIds}
         subtleTextClass={subtleTextClass}
