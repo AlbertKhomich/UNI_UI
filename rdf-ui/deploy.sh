@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export NVM_DIR="/upb/users/a/akhomich/profiles/unix/cs/.nvm"
+# shellcheck disable=SC1091
+source "$NVM_DIR/nvm.sh"
+
+nvm use 20.9.0
+
 APP_NAME="${APP_NAME:-uni-ui-app}"
 RUN_E2E="${RUN_E2E:-0}"
+
+echo "Node: $(node --version) — $(command -v node)"
+echo "npm:  $(npm --version) — $(command -v npm)"
 
 echo "[1/6] Installing dependencies"
 npm ci

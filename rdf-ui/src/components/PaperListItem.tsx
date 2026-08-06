@@ -1,6 +1,7 @@
 "use client";
 
-import type { KeyboardEvent, MouseEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import { CiShare1 } from "react-icons/ci";
 import PaperDetailsPanel from "@/components/PaperDetailsPanel";
 import type { PaperDetails, SearchItem } from "@/lib/types";
 
@@ -13,6 +14,7 @@ type PaperListItemProps = {
   item: SearchItem;
   loadingDetails: boolean;
   onSelectAuthor: (iri: string, name: string) => void;
+  onSharePaper: (title: string) => Promise<void>;
   onTogglePaperOpen: (id: string) => void;
 };
 
@@ -36,8 +38,21 @@ export default function PaperListItem(props: PaperListItemProps) {
     item,
     loadingDetails,
     onSelectAuthor,
+    onSharePaper,
     onTogglePaperOpen,
   } = props;
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function handleShare(): Promise<void> {
+    try {
+      await onSharePaper(item.title);
+      setShareStatus("copied");
+      window.setTimeout(() => setShareStatus("idle"), 1800);
+    } catch {
+      setShareStatus("failed");
+      window.setTimeout(() => setShareStatus("idle"), 1800);
+    }
+  }
 
   return (
     <li
@@ -45,23 +60,23 @@ export default function PaperListItem(props: PaperListItemProps) {
         isDark ? (isOpen ? "border-gray-500" : "border-gray-700") : isOpen ? "border-gray-400" : "border-gray-200"
       }`}
     >
-      <div
-        className="flex cursor-pointer items-start justify-between gap-3"
-        role="button"
-        tabIndex={0}
-        aria-expanded={isOpen}
-        onClick={(event) => {
-          if (shouldSkipRowToggle(event)) return;
-          onTogglePaperOpen(item.id);
-        }}
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          if (shouldSkipRowToggle(event)) return;
-          onTogglePaperOpen(item.id);
-        }}
-      >
-        <div className="min-w-0 flex-1 select-text">
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className="min-w-0 flex-1 cursor-pointer select-text"
+          role="button"
+          tabIndex={0}
+          aria-expanded={isOpen}
+          onClick={(event) => {
+            if (shouldSkipRowToggle(event)) return;
+            onTogglePaperOpen(item.id);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            if (shouldSkipRowToggle(event)) return;
+            onTogglePaperOpen(item.id);
+          }}
+        >
           <div className="break-words text-[17px] font-semibold">{item.title || item.id}</div>
           <div className={isDark ? "mt-1.5 text-sm text-gray-300" : "mt-1.5 text-sm text-gray-600"}>
             <span>{item.year ?? "—"}</span>
@@ -69,14 +84,30 @@ export default function PaperListItem(props: PaperListItemProps) {
             <span>{item.authorsText || "Authors: —"}</span>
           </div>
         </div>
-        <span
-          className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
-            isDark ? "border-gray-500 text-gray-100 hover:bg-gray-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"
-          }`}
-          aria-hidden="true"
-        >
-          {isOpen ? "Hide" : "Details"}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+              isDark ? "border-gray-500 text-gray-100 hover:bg-gray-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"
+            }`}
+            aria-label={`Copy link to ${item.title}`}
+            title="Copy link to this paper"
+            onClick={() => void handleShare()}
+          >
+            <CiShare1 size={16} aria-hidden="true" />
+            <span>{shareStatus === "copied" ? "Copied" : shareStatus === "failed" ? "Copy failed" : "Share"}</span>
+          </button>
+          <button
+            type="button"
+            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+              isDark ? "border-gray-500 text-gray-100 hover:bg-gray-800" : "border-gray-300 text-gray-700 hover:bg-gray-100"
+            }`}
+            aria-expanded={isOpen}
+            onClick={() => onTogglePaperOpen(item.id)}
+          >
+            {isOpen ? "Hide" : "Details"}
+          </button>
+        </div>
       </div>
 
       {isOpen ? (

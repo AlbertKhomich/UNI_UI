@@ -192,6 +192,27 @@ async function readRagStream(response: Response, onEvent: (event: RagStreamEvent
     handleEvent(event);
   }
 }
+async function copyShareUrl(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back for browsers that expose the API but deny it outside a secure context.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard copy failed");
+}
 
 export default function HomePage() {
   const [q, setQ] = useState("");
@@ -430,6 +451,12 @@ export default function HomePage() {
     return () => window.clearInterval(intervalId);
   }, [aiDocumentStatus, aiEnabled, pollDocumentStatus]);
 
+  async function handleSharePaper(title: string): Promise<void> {
+    const url = new URL("/share", window.location.origin);
+    url.searchParams.set("q", title);
+    await copyShareUrl(url.toString());
+  }
+
   return (
     <main className="mx-auto max-w-[900px] p-6 font-sans">
       <div className="mb-4 flex items-start justify-between">
@@ -516,24 +543,23 @@ export default function HomePage() {
         />
       ) : null}
 
-      {!aiEnabled ? (
-        <PaperResultsList
-          canSearch={canSearch}
-          details={details}
-          detailsClass={detailsClass}
-          detailsErr={detailsErr}
-          detailsLoading={detailsLoading}
-          hasMore={hasMore}
-          isDark={isDark}
-          items={items}
-          loadMoreRef={loadMoreRef}
-          loadingMore={loadingMore}
-          onSelectAuthor={handleAuthorSelect}
-          onTogglePaperOpen={togglePaperOpen}
-          openIds={openIds}
-          subtleTextClass={subtleTextClass}
-        />
-      ) : null}
+      <PaperResultsList
+        canSearch={canSearch}
+        details={details}
+        detailsClass={detailsClass}
+        detailsErr={detailsErr}
+        detailsLoading={detailsLoading}
+        hasMore={hasMore}
+        isDark={isDark}
+        items={items}
+        loadMoreRef={loadMoreRef}
+        loadingMore={loadingMore}
+        onSelectAuthor={handleAuthorSelect}
+        onSharePaper={handleSharePaper}
+        onTogglePaperOpen={togglePaperOpen}
+        openIds={openIds}
+        subtleTextClass={subtleTextClass}
+      />
 
       <div className="mt-18 flex items-center justify-center">
         <Link

@@ -16,6 +16,10 @@ export type LocationLike = {
   origin: string;
 };
 
+function isSharePath(pathname: string): boolean {
+  return /^\/share\/?$/i.test(pathname);
+}
+
 function parseUrl(input: string): URL | null {
   try {
     return new URL(input);
@@ -140,6 +144,9 @@ export function initialQueryFromLocation(loc: LocationLike): string {
   const params = new URLSearchParams(loc.search);
   const directQ = (params.get("q") ?? "").trim();
 
+  // The share route always restores the value as a search, including direct paper IRIs.
+  if (isSharePath(loc.pathname)) return directQ;
+
   // Keep direct URI-driven search auto-mapping disabled for browse-first navigation.
   // Useful for future if we need to restore old behavior:
   // if (extractDescribeIriFromSearchQuery(directQ)) return toSearchQueryFromIri(directQ);
@@ -149,6 +156,8 @@ export function initialQueryFromLocation(loc: LocationLike): string {
 
 export function initialDescribeIriFromLocation(loc: LocationLike): string | null {
   const params = new URLSearchParams(loc.search);
+  if (isSharePath(loc.pathname)) return null;
+
   const directQ = (params.get("q") ?? "").trim();
   if (directQ) return extractDescribeIriFromSearchQuery(directQ);
 

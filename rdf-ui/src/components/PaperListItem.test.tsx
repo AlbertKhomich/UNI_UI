@@ -38,6 +38,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={onTogglePaperOpen}
       />,
     );
@@ -45,7 +46,7 @@ describe("PaperListItem", () => {
     fireEvent.click(screen.getByText("Graph Paper"));
     expect(onTogglePaperOpen).toHaveBeenCalledWith("paper-1");
 
-    const rowButton = screen.getByRole("button", { expanded: false });
+    const rowButton = screen.getByRole("button", { name: /Graph Paper/, expanded: false });
     fireEvent.keyDown(rowButton, { key: "Enter" });
     fireEvent.keyDown(rowButton, { key: " " });
     expect(onTogglePaperOpen).toHaveBeenCalledTimes(3);
@@ -62,6 +63,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={vi.fn()}
       />,
     );
@@ -78,6 +80,7 @@ describe("PaperListItem", () => {
         item={item}
         loadingDetails={false}
         onSelectAuthor={vi.fn()}
+        onSharePaper={vi.fn()}
         onTogglePaperOpen={vi.fn()}
       />,
     );
