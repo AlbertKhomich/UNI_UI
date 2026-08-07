@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ragUrl, requireDemoRagSession } from "@/app/api/rag/_lib";
+import { ragUrl, requireRagSessionForRequest } from "@/app/api/rag/_lib";
 
 function safeFilename(input: string): string {
   const base = input.trim() || "highlighted.pdf";
@@ -9,6 +9,7 @@ function safeFilename(input: string): string {
 
 export async function GET(request: Request) {
   try {
+    const session = await requireRagSessionForRequest();
     const url = new URL(request.url);
     const chunkId = url.searchParams.get("chunkId")?.trim() ?? "";
     const filename = safeFilename(url.searchParams.get("filename") ?? "highlighted.pdf");
@@ -17,7 +18,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing chunkId." }, { status: 400 });
     }
 
-    const session = await requireDemoRagSession();
     const response = await fetch(
       ragUrl(`/sessions/${encodeURIComponent(session.id)}/chunks/${encodeURIComponent(chunkId)}/highlight`),
       {
@@ -47,4 +47,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

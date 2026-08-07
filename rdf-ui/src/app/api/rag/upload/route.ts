@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { ensureDemoRagSession, proxyRagResponse, ragUrl } from "@/app/api/rag/_lib";
+import { ensureUserRagSession, proxyRagResponse, ragUrl } from "@/app/api/rag/_lib";
 
 export async function POST(request: Request) {
   try {
+    const session = await ensureUserRagSession();
     const incoming = await request.formData();
     const files = incoming.getAll("files").filter((value): value is File => value instanceof File);
 
@@ -10,7 +11,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Choose at least one document to upload." }, { status: 400 });
     }
 
-    const session = await ensureDemoRagSession();
     const form = new FormData();
     for (const file of files) form.append("files", file, file.name);
 
@@ -22,13 +22,10 @@ export async function POST(request: Request) {
       body: form,
     });
 
-    const proxied = await proxyRagResponse(response, "Failed to upload document");
-    proxied.headers.set("x-rag-session-id", session.id);
-    return proxied;
+    return proxyRagResponse(response, "Failed to upload document");
   } catch (error: unknown) {
     if (error instanceof NextResponse) return error;
     const message = error instanceof Error ? error.message : "Failed to upload document";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

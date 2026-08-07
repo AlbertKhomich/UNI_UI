@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { proxyRagResponse, ragUrl, requireDemoRagSession } from "@/app/api/rag/_lib";
+import { proxyRagResponse, ragUrl, requireRagSessionForRequest } from "@/app/api/rag/_lib";
 
 export const maxDuration = 600;
 
 export async function POST(request: Request) {
   try {
+    const session = await requireRagSessionForRequest();
     const body = await request.json().catch(() => null);
     const question = typeof body?.question === "string" ? body.question.trim() : "";
 
@@ -12,7 +13,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Enter a question before asking." }, { status: 400 });
     }
 
-    const session = await requireDemoRagSession();
     const response = await fetch(ragUrl(`/sessions/${encodeURIComponent(session.id)}/queries`), {
       method: "POST",
       headers: {

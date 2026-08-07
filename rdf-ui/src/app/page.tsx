@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import DescribeResultPanel from "@/components/DescribeResultPanel";
 import DiceFooter from "@/components/DiceFooter";
 import PageContainer from "@/components/PageContainer";
@@ -26,6 +28,7 @@ export { initialDescribeIriFromLocation, initialQueryFromLocation, toSearchQuery
 
 type SearchYearRange = [string, string];
 type RagDocumentStatus = "idle" | "uploading" | "pending" | "parsing" | "chunking" | "embedding" | "indexed" | "failed";
+type RagSessionStatus = "idle" | "loading" | "ready" | "error";
 type RagSource = {
   chunk_id?: string;
   href?: string;
@@ -67,6 +70,13 @@ function collectDocumentStatuses(payload: unknown): string[] {
   return source
     .map((item) => (isRecord(item) && typeof item.status === "string" ? item.status.toLowerCase() : ""))
     .filter(Boolean);
+}
+
+function hasDocuments(payload: unknown): boolean {
+  if (Array.isArray(payload)) return payload.length > 0;
+  if (!isRecord(payload)) return false;
+  if (Array.isArray(payload.documents)) return payload.documents.length > 0;
+  return Array.isArray(payload.items) && payload.items.length > 0;
 }
 
 function summarizeDocumentStatus(statuses: string[]): RagDocumentStatus {
@@ -215,6 +225,8 @@ async function copyShareUrl(value: string): Promise<void> {
 }
 
 export default function HomePage() {
+  const router = useRouter();
+  const { status: authStatus } = useSession();
   const [q, setQ] = useState("");
   const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
   const [describeIri, setDescribeIri] = useState<string | null>(null);
@@ -223,9 +235,13 @@ export default function HomePage() {
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [clearingAttachments, setClearingAttachments] = useState(false);
+  const [hasAiDocuments, setHasAiDocuments] = useState(false);
   const [aiSources, setAiSources] = useState<RagSource[]>([]);
+  const [ragSessionStatus, setRagSessionStatus] = useState<RagSessionStatus>("idle");
   const dq = useDebounce(aiEnabled ? "" : q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const ragInitializationStartedRef = useRef(false);
 
   const { isDark, setTheme, theme } = useTheme();
   const {
@@ -352,6 +368,49 @@ export default function HomePage() {
     setQ(`a: ${authorIri}`);
   }
 
+  const pollDocumentStatus = useCallback(async (): Promise<void> => {
+    const response = await fetch("/api/rag/documents");
+    const payload = await readApiJson(response, "Failed to load document status");
+    const statuses = collectDocumentStatuses(payload);
+    setHasAiDocuments(hasDocuments(payload));
+    setAiDocumentStatus(statuses.length > 0 ? summarizeDocumentStatus(statuses) : "idle");
+  }, []);
+
+  const initializeRagSession = useCallback(async (): Promise<void> => {
+    if (authStatus === "loading" || ragInitializationStartedRef.current) return;
+
+    ragInitializationStartedRef.current = true;
+    setRagSessionStatus("loading");
+    setAiError(null);
+
+    try {
+      const response = await fetch("/api/rag/session", { method: "POST" });
+
+      if (response.status === 401) {
+        ragInitializationStartedRef.current = false;
+        setRagSessionStatus("idle");
+        router.replace("/login");
+        return;
+      }
+
+      await readApiJson(response, "Failed to prepare your RAG session");
+      setRagSessionStatus("ready");
+      await pollDocumentStatus().catch((error: unknown) => {
+        setAiError(error instanceof Error ? error.message : "Failed to load document status");
+      });
+    } catch (error: unknown) {
+      ragInitializationStartedRef.current = false;
+      setRagSessionStatus("error");
+      setAiError(error instanceof Error ? error.message : "Failed to prepare your RAG session");
+    }
+  }, [authStatus, pollDocumentStatus, router]);
+
+  useEffect(() => {
+    if (authStatus === "authenticated" || (authStatus === "unauthenticated" && aiEnabled)) {
+      void initializeRagSession();
+    }
+  }, [aiEnabled, authStatus, initializeRagSession]);
+
   function handleToggleAi(enabled: boolean): void {
     setAiEnabled(enabled);
     setDescribeIri(null);
@@ -360,31 +419,20 @@ export default function HomePage() {
     setAiAnswer("");
     setAiError(null);
     setAiSources([]);
-    if (enabled) void ensureRagSession();
+    if (enabled) void initializeRagSession();
   }
-
-  async function ensureRagSession(): Promise<void> {
-    setAiLoading(true);
-    setAiError(null);
-
-    try {
-      const response = await fetch("/api/rag/session", { method: "POST" });
-      await readApiJson(response, "Failed to create RAG session");
-    } catch (error: unknown) {
-      setAiError(error instanceof Error ? error.message : "Failed to create RAG session");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
-  const pollDocumentStatus = useCallback(async (): Promise<void> => {
-    const response = await fetch("/api/rag/documents");
-    const payload = await readApiJson(response, "Failed to load document status");
-    const statuses = collectDocumentStatuses(payload);
-    setAiDocumentStatus(summarizeDocumentStatus(statuses));
-  }, []);
 
   async function handleUploadDocument(files: File[]): Promise<void> {
+    if (authStatus !== "authenticated") {
+      router.replace("/login");
+      return;
+    }
+
+    if (ragSessionStatus !== "ready") {
+      await initializeRagSession();
+      return;
+    }
+
     setAiLoading(true);
     setAiError(null);
     setAiDocumentStatus("uploading");
@@ -403,6 +451,38 @@ export default function HomePage() {
       setAiError(error instanceof Error ? error.message : "Failed to upload document");
     } finally {
       setAiLoading(false);
+    }
+  }
+
+  function handleRequestUpload(): void {
+    if (authStatus === "unauthenticated") {
+      router.replace("/login");
+      return;
+    }
+
+    if (authStatus === "authenticated" && ragSessionStatus === "error") {
+      void initializeRagSession();
+    }
+  }
+
+  async function handleClearAttachments(): Promise<void> {
+    if (authStatus !== "authenticated" || clearingAttachments) return;
+
+    setClearingAttachments(true);
+    setAiError(null);
+
+    try {
+      const response = await fetch("/api/rag/session", { method: "DELETE" });
+      await readApiJson(response, "Failed to clear attachments");
+      setHasAiDocuments(false);
+      setAiDocumentStatus("idle");
+      setAiAnswer("");
+      setAiSources([]);
+      setRagSessionStatus("ready");
+    } catch (error: unknown) {
+      setAiError(error instanceof Error ? error.message : "Failed to clear attachments");
+    } finally {
+      setClearingAttachments(false);
     }
   }
 
@@ -487,6 +567,7 @@ export default function HomePage() {
 
       <SearchControls
         aiAnswer={aiAnswer}
+        clearingAttachments={clearingAttachments}
         aiDocumentStatus={aiDocumentStatus === "idle" ? "" : aiDocumentStatus}
         aiEnabled={aiEnabled}
         aiError={aiError}
@@ -495,11 +576,14 @@ export default function HomePage() {
         canSearch={canSearch}
         err={err}
         hasItems={items.length > 0}
+        hasUploadedDocuments={authStatus === "authenticated" && hasAiDocuments}
         loading={loading}
         onApplyPrefix={applySearchPrefix}
         onAskAi={handleAskAi}
         onCopyAiAnswer={handleCopyAiAnswer}
+        onClearAttachments={handleClearAttachments}
         onQueryChange={handleQueryChange}
+        onRequestUpload={handleRequestUpload}
         onToggleAi={handleToggleAi}
         onUploadDocument={handleUploadDocument}
         onYearRangeChange={setYearRange}
@@ -507,6 +591,8 @@ export default function HomePage() {
         query={q}
         searchInputClass={searchInputClass}
         searchInputRef={searchInputRef}
+        uploadDocumentsLoading={authStatus === "loading" || ragSessionStatus === "loading"}
+        uploadDocumentsReady={authStatus === "authenticated" && ragSessionStatus === "ready"}
         yearRange={yearRange}
       />
 

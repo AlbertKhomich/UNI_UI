@@ -2,7 +2,7 @@
 
 import { useState, type RefObject } from "react";
 import { BiSolidZap } from "react-icons/bi";
-import { FiSend, FiUpload } from "react-icons/fi";
+import { FiSend, FiTrash2, FiUpload } from "react-icons/fi";
 import { FaRegCopy } from "react-icons/fa";
 import BeatLoader from "react-spinners/BeatLoader";
 import MarkdownAnswer from "@/components/MarkdownAnswer";
@@ -21,6 +21,7 @@ type RagSource = {
 
 type SearchControlsProps = {
   aiAnswer: string;
+  clearingAttachments: boolean;
   aiDocumentStatus: string;
   aiEnabled: boolean;
   aiError: string | null;
@@ -29,10 +30,13 @@ type SearchControlsProps = {
   canSearch: boolean;
   err: string | null;
   hasItems: boolean;
+  hasUploadedDocuments: boolean;
   loading: boolean;
   onApplyPrefix: (prefix: SearchPrefix) => void;
   onAskAi: () => void;
   onCopyAiAnswer: () => Promise<void>;
+  onClearAttachments: () => void;
+  onRequestUpload: () => void;
   onToggleAi: (enabled: boolean) => void;
   onUploadDocument: (files: File[]) => void;
   onQueryChange: (next: string) => void;
@@ -41,12 +45,15 @@ type SearchControlsProps = {
   query: string;
   searchInputClass: string;
   searchInputRef: RefObject<HTMLInputElement | null>;
+  uploadDocumentsLoading: boolean;
+  uploadDocumentsReady: boolean;
   yearRange: SearchYearRange;
 };
 
 export default function SearchControls(props: SearchControlsProps) {
   const {
     aiAnswer,
+    clearingAttachments,
     aiDocumentStatus,
     aiEnabled,
     aiError,
@@ -55,10 +62,13 @@ export default function SearchControls(props: SearchControlsProps) {
     canSearch,
     err,
     hasItems,
+    hasUploadedDocuments,
     loading,
     onApplyPrefix,
     onAskAi,
     onCopyAiAnswer,
+    onClearAttachments,
+    onRequestUpload,
     onToggleAi,
     onUploadDocument,
     onQueryChange,
@@ -67,6 +77,8 @@ export default function SearchControls(props: SearchControlsProps) {
     query,
     searchInputClass,
     searchInputRef,
+    uploadDocumentsLoading,
+    uploadDocumentsReady,
     yearRange,
   } = props;
 
@@ -117,21 +129,44 @@ export default function SearchControls(props: SearchControlsProps) {
 
         {aiEnabled ? (
           <div key="ai" className="mode-panel-enter flex flex-wrap items-center gap-2">
-            <label className={`${prefixButtonClass} inline-flex cursor-pointer items-center gap-2`}>
-              <FiUpload aria-hidden="true" size={15} />
-              <span>Upload documents</span>
-              <input
-                type="file"
-                className="sr-only"
-                accept=".pdf,.txt,.md,.html,.htm,.docx"
-                multiple
-                onChange={(event) => {
-                  const files = Array.from(event.target.files ?? []);
-                  event.target.value = "";
-                  if (files.length > 0) onUploadDocument(files);
-                }}
-              />
-            </label>
+            {uploadDocumentsReady ? (
+              <label className={`${prefixButtonClass} inline-flex cursor-pointer items-center gap-2`}>
+                <FiUpload aria-hidden="true" size={15} />
+                <span>Upload documents</span>
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept=".pdf,.txt,.md,.html,.htm,.docx"
+                  multiple
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    event.target.value = "";
+                    if (files.length > 0) onUploadDocument(files);
+                  }}
+                />
+              </label>
+            ) : (
+              <button
+                type="button"
+                className={`${prefixButtonClass} inline-flex items-center gap-2 disabled:cursor-wait disabled:opacity-50`}
+                disabled={uploadDocumentsLoading}
+                onClick={onRequestUpload}
+              >
+                <FiUpload aria-hidden="true" size={15} />
+                <span>{uploadDocumentsLoading ? "Preparing upload..." : "Upload documents"}</span>
+              </button>
+            )}
+            {hasUploadedDocuments ? (
+              <button
+                type="button"
+                className={`${prefixButtonClass} inline-flex items-center gap-2 disabled:cursor-wait disabled:opacity-50`}
+                disabled={clearingAttachments}
+                onClick={onClearAttachments}
+              >
+                <FiTrash2 aria-hidden="true" size={15} />
+                <span>{clearingAttachments ? "Clearing..." : "Clear attachments"}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className={`${prefixButtonClass} inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50`}

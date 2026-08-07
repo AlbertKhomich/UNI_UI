@@ -2,6 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import type { UseFormRegisterReturn } from "react-hook-form";
@@ -82,12 +84,12 @@ function PasswordField({
 }
 
 export default function RegisterPage() {
+  const router = useRouter();
   const { isDark, setTheme } = useTheme();
-  const [successMessage, setSuccessMessage] = useState("");
   const {
     register,
     handleSubmit,
-    reset,
+    clearErrors,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<RegistrationFormValues>({
@@ -101,7 +103,7 @@ export default function RegisterPage() {
   });
 
   async function submitRegistration(values: RegistrationFormValues) {
-    setSuccessMessage("");
+    clearErrors("root");
 
     try {
       const response = await fetch("/api/register", {
@@ -123,8 +125,27 @@ export default function RegisterPage() {
         return;
       }
 
-      reset();
-      setSuccessMessage("Your account has been created successfully.");
+      try {
+        const signInResult = await signIn("credentials", {
+          email: values.email,
+          password: values.password,
+          redirect: false,
+          callbackUrl: "/",
+        });
+
+        if (!signInResult?.ok) {
+          setError("root", {
+            message: "Your account was created, but automatic sign-in failed. Please sign in.",
+          });
+          return;
+        }
+
+        router.replace("/");
+      } catch {
+        setError("root", {
+          message: "Your account was created, but automatic sign-in failed. Please sign in.",
+        });
+      }
     } catch {
       setError("root", {
         message: "Unable to reach the server. Please try again.",
@@ -226,12 +247,6 @@ export default function RegisterPage() {
                 {errors.root.message}
               </p>
             ) : null}
-            {successMessage ? (
-              <p aria-live="polite" className="text-sm font-medium text-green-600 dark:text-green-400">
-                {successMessage}
-              </p>
-            ) : null}
-
             <button
               className="h-11 w-full rounded-lg bg-blue-600 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-slate-900"
               disabled={isSubmitting}

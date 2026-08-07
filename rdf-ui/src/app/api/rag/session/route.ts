@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { ensureDemoRagSession } from "@/app/api/rag/_lib";
+import { ensureRagSessionForRequest, resetUserRagSession } from "@/app/api/rag/_lib";
 
 export async function POST() {
   try {
-    const session = await ensureDemoRagSession();
-    return NextResponse.json({ id: session.id });
+    await ensureRagSessionForRequest();
+    return NextResponse.json({ ready: true });
   } catch (error: unknown) {
     if (error instanceof NextResponse) return error;
     const message = error instanceof Error ? error.message : "Failed to create RAG session";
@@ -12,3 +12,13 @@ export async function POST() {
   }
 }
 
+export async function DELETE() {
+  try {
+    await resetUserRagSession();
+    return NextResponse.json({ ready: true });
+  } catch (error: unknown) {
+    if (error instanceof NextResponse) return error;
+    const message = error instanceof Error ? error.message : "Failed to clear attachments";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

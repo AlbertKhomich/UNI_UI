@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { proxyRagResponse, ragUrl, requireDemoRagSession } from "@/app/api/rag/_lib";
+import { proxyRagResponse, ragUrl, requireRagSessionForRequest } from "@/app/api/rag/_lib";
 
 export async function GET() {
   try {
-    const session = await requireDemoRagSession();
+    const session = await requireRagSessionForRequest();
     const response = await fetch(ragUrl(`/sessions/${encodeURIComponent(session.id)}/documents`), {
       headers: {
         Authorization: `Bearer ${session.token}`,
@@ -17,4 +17,3 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

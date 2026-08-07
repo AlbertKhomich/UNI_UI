@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import WebSocket from "ws";
-import { ragUrl, requireDemoRagSession } from "@/app/api/rag/_lib";
+import { ragUrl, requireRagSessionForRequest } from "@/app/api/rag/_lib";
 
 export const maxDuration = 600;
 export const runtime = "nodejs";
@@ -17,6 +17,7 @@ function encodeEvent(event: unknown): Uint8Array {
 
 export async function POST(request: Request) {
   try {
+    const session = await requireRagSessionForRequest();
     const body = await request.json().catch(() => null);
     const question = typeof body?.question === "string" ? body.question.trim() : "";
 
@@ -24,7 +25,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Enter a question before asking." }, { status: 400 });
     }
 
-    const session = await requireDemoRagSession();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         let closed = false;
