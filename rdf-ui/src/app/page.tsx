@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { FiMoon, FiSun } from "react-icons/fi";
 import DescribeResultPanel from "@/components/DescribeResultPanel";
+import DiceFooter from "@/components/DiceFooter";
+import PageContainer from "@/components/PageContainer";
 import PaperResultsList from "@/components/PaperResultsList";
 import SearchControls from "@/components/SearchControls";
+import SiteHeader from "@/components/SiteHeader";
 import UsersByCountryWidget from "@/components/CountryWidget";
 import { useDescribeState } from "@/hooks/useDescribeState";
 import { useCountryStats } from "@/hooks/useCountryStats";
@@ -462,36 +462,12 @@ export default function HomePage() {
   }
 
   return (
-    <main className="mx-auto max-w-[900px] p-6 font-sans">
-      <div className="mb-4 flex items-start justify-between">
-        <a
-          href="http://upbkg.data.dice-research.org/sparql"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block"
-        >
-          <Image
-            src="/sparql-96.png"
-            alt="SPARQL endpoint"
-            width={48}
-            height={48}
-            priority
-          />
-        </a>
-        <button
-          type="button"
-          aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-          title={isDark ? "Switch to light theme" : "Switch to dark theme"}
-          className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors ${
-            isDark
-              ? "border-gray-500 text-gray-100 hover:bg-gray-800"
-              : "border-gray-300 text-gray-700 hover:bg-gray-100"
-          }`}
-          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-        >
-          {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
-        </button>
-      </div>
+    <PageContainer>
+      <SiteHeader
+        className="mb-4"
+        isDark={isDark}
+        onToggleTheme={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+      />
 
       <div className="mb-6">
         {countryErr ? (
@@ -566,22 +542,7 @@ export default function HomePage() {
         subtleTextClass={subtleTextClass}
       />
 
-      <div className="mt-18 flex items-center justify-center">
-        <Link
-          href="https://dice-research.org/"
-          aria-label="Dice research group"
-          rel="noreferrer"
-          target="_blank"
-        >
-          <Image
-            src="/logo.svg"
-            alt="Dice group"
-            width={110}
-            height={55}
-            priority
-          />
-        </Link>
-      </div>
-    </main>
+      <DiceFooter className="mt-18" />
+    </PageContainer>
   );
 }

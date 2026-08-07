@@ -9,6 +9,10 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.agents
+.windsurf
+.claude
+skills-lock.json
 
 # testing
 /coverage
@@ -43,3 +47,4 @@ yarn-error.log*
 next-env.d.ts
 
 curls.md
+/src/generated/prisma

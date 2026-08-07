@@ -5,7 +5,7 @@ export NVM_DIR="/upb/users/a/akhomich/profiles/unix/cs/.nvm"
 # shellcheck disable=SC1091
 source "$NVM_DIR/nvm.sh"
 
-nvm use 20.9.0
+nvm use 20.19.5
 
 APP_NAME="${APP_NAME:-uni-ui-app}"
 RUN_E2E="${RUN_E2E:-0}"
