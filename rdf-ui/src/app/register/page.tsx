@@ -86,6 +86,7 @@ function PasswordField({
 export default function RegisterPage() {
   const router = useRouter();
   const { isDark, setTheme } = useTheme();
+  const [showLegalTerms, setShowLegalTerms] = useState(false);
   const {
     register,
     handleSubmit,
@@ -218,28 +219,90 @@ export default function RegisterPage() {
               registration={register("confirmPassword")}
             />
 
-            <label className="flex cursor-pointer items-start gap-2.5 pt-1 text-[14px] font-medium text-slate-800 dark:text-slate-200 sm:items-center">
+            <div className="flex items-start gap-2.5 pt-1 text-[14px] font-medium text-slate-800 dark:text-slate-200">
               <input
                 aria-describedby={errors.terms ? "terms-error" : undefined}
                 aria-invalid={Boolean(errors.terms)}
-                className="mt-0.5 h-[18px] w-[18px] shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600 sm:mt-0"
+                aria-label="Agree to the Terms of Use and acknowledge the Privacy Policy"
+                className="mt-0.5 h-[18px] w-[18px] shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600"
+                id="terms"
                 type="checkbox"
                 {...register("terms")}
               />
-              <span>
-                I agree to the{" "}
-                <Link
-                  className="font-semibold text-blue-600 underline decoration-blue-600/50 underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                  href="/terms"
-                >
-                  Terms and Conditions
-                </Link>
-              </span>
-            </label>
+              <button
+                aria-controls="legal-terms"
+                aria-expanded={showLegalTerms}
+                className="text-left underline decoration-slate-500/50 underline-offset-2 transition hover:text-blue-700 dark:hover:text-blue-300"
+                onClick={() => setShowLegalTerms((visible) => !visible)}
+                type="button"
+              >
+                I agree to the Terms of Use and acknowledge the Privacy Policy
+              </button>
+            </div>
             {errors.terms ? (
               <p className="text-xs font-medium text-red-600 dark:text-red-400" id="terms-error">
                 {errors.terms.message}
               </p>
+            ) : null}
+
+            {showLegalTerms ? (
+              <div
+                className="space-y-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                id="legal-terms"
+              >
+                <section aria-labelledby="terms-of-use-heading">
+                  <h2 className="text-lg font-bold text-slate-950 dark:text-white" id="terms-of-use-heading">
+                    Terms of Use
+                  </h2>
+                  <div className="mt-2 space-y-3">
+                    <p>
+                      This service is provided for research and informational purposes. Users are responsible for the
+                      content they upload and must not upload unlawful or unauthorized material.
+                    </p>
+                    <p>
+                      Uploaded documents may be stored and processed to provide the RAG functionality. The service may
+                      change or become temporarily unavailable.
+                    </p>
+                    <p>By using this service, you agree to these Terms of Use.</p>
+                  </div>
+                </section>
+
+                <section aria-labelledby="privacy-policy-heading">
+                  <h2 className="text-lg font-bold text-slate-950 dark:text-white" id="privacy-policy-heading">
+                    Privacy Policy
+                  </h2>
+                  <div className="mt-2 space-y-3">
+                    <p>
+                      We process your email address, account information, uploaded documents, and queries to provide and
+                      operate this service.
+                    </p>
+                    <p>
+                      Uploaded documents and related data are stored only as necessary for providing the service and are
+                      not used for unrelated purposes.
+                    </p>
+                    <p>
+                      Data is deleted when it is no longer required or when your account/data is deleted, unless legal
+                      retention requirements apply.
+                    </p>
+                    <p>
+                      You have the rights provided under the GDPR, including access, correction, deletion, restriction,
+                      and objection.
+                    </p>
+                    <div>
+                      <p><strong>Controller:</strong> Dice Research Group</p>
+                      <p>
+                        <strong>Contact:</strong>{" "}
+                        <a
+                          className="font-semibold text-blue-600 underline decoration-blue-600/50 underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                          href="mailto:akhomich@mail.uni-paderborn.de"
+                        >
+                          akhomich@mail.uni-paderborn.de
+                        </a>
+                      </p>
+                    </div>
+                  </div>
+                </section>
+              </div>
             ) : null}
 
             {errors.root?.message ? (
