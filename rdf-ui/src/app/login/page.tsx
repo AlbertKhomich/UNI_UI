@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <PageContainer className="flex min-h-screen flex-col bg-white text-slate-950 transition-colors dark:bg-slate-950 dark:text-white">
+    <PageContainer className="flex min-h-screen flex-col text-slate-950 transition-colors dark:text-white">
       <SiteHeader
         isDark={isDark}
         onToggleTheme={() =>
