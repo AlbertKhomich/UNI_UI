@@ -42,6 +42,137 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Create-account palette, matched to the graphite and electric-blue mockup. */
+.register-page {
+  background:
+    radial-gradient(circle at 50% 34%, rgba(61, 118, 255, 0.07), transparent 32%),
+    #f7f8fa;
+}
+
+.register-card {
+  border-color: #d4d8e1;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 55px rgba(21, 31, 53, 0.09);
+}
+
+.register-input {
+  border-color: #cbd0da;
+  background: rgba(248, 249, 251, 0.92);
+}
+
+.register-input:focus {
+  border-color: #3478f6;
+  box-shadow: 0 0 0 4px rgba(52, 120, 246, 0.12);
+}
+
+.register-submit {
+  border: 1px solid #367cff;
+  background: linear-gradient(180deg, #3979f3 0%, #244fc9 53%, #1b378d 100%);
+  box-shadow: 0 8px 22px rgba(40, 91, 220, 0.26), inset 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.register-submit:hover {
+  background: linear-gradient(180deg, #4a87fa 0%, #2c5cdb 53%, #2143a2 100%);
+}
+
+.register-link {
+  color: #2878e8;
+}
+
+.dark .register-page {
+  background:
+    radial-gradient(circle at 50% 34%, rgba(46, 104, 255, 0.08), transparent 31%),
+    #090a0c;
+}
+
+.dark .register-card {
+  border-color: rgba(168, 176, 190, 0.34);
+  background: linear-gradient(145deg, rgba(27, 29, 33, 0.94), rgba(12, 13, 15, 0.96));
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5), 0 0 36px rgba(48, 97, 220, 0.05);
+}
+
+.dark .register-label {
+  color: #f1f2f4;
+}
+
+.dark .register-field-icon {
+  color: #9ba0aa;
+}
+
+.dark .register-input {
+  border-color: rgba(143, 150, 162, 0.38);
+  background: rgba(3, 4, 6, 0.72);
+  color: #f4f5f7;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.dark .register-input::placeholder {
+  color: #858a95;
+}
+
+.dark .register-input:focus {
+  border-color: #3478f6;
+  box-shadow: 0 0 0 4px rgba(52, 120, 246, 0.13), 0 0 24px rgba(34, 89, 230, 0.08);
+}
+
+.dark .register-password-toggle {
+  color: #8e949f;
+}
+
+.dark .register-password-toggle:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f0f2f5;
+}
+
+.dark .register-terms {
+  color: #b7bbc3;
+}
+
+.dark .register-checkbox {
+  border-color: #666c77;
+  background: #101114;
+  accent-color: #3478f6;
+}
+
+.dark .register-legal {
+  border-color: rgba(143, 150, 162, 0.3);
+  background: rgba(3, 4, 6, 0.66);
+  color: #bec2ca;
+}
+
+.dark .register-submit {
+  border-color: #3479ff;
+  background: linear-gradient(180deg, #3475ef 0%, #244cc0 52%, #182e7f 100%);
+  box-shadow: 0 9px 25px rgba(27, 78, 218, 0.3), inset 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.dark .register-submit:hover {
+  background: linear-gradient(180deg, #4484fa 0%, #2c5ad2 52%, #203c93 100%);
+}
+
+.dark .register-divider {
+  color: #969ba5;
+}
+
+.dark .register-divider > span:first-child,
+.dark .register-divider > span:last-child {
+  background: #484c54;
+}
+
+.dark .register-link {
+  color: #3e91ff;
+}
+
+.dark .register-page header a,
+.dark .register-page header button {
+  border-color: rgba(151, 158, 171, 0.38);
+}
+
+.dark .register-page footer nav {
+  border-color: rgba(151, 158, 171, 0.14);
+  color: #8f949e;
+}
+
 .mode-panel-enter {
   animation: mode-panel-enter 180ms ease-out both;
 }
