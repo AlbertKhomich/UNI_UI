@@ -52,7 +52,7 @@ export default function LoginPage() {
   }
 
   return (
-    <PageContainer className="flex min-h-screen flex-col text-slate-950 transition-colors dark:text-white">
+    <PageContainer className="register-page flex min-h-screen flex-col text-slate-950 transition-colors dark:text-white">
       <SiteHeader
         isDark={isDark}
         onToggleTheme={() =>
@@ -60,7 +60,7 @@ export default function LoginPage() {
         }
       />
 
-      <section className="mx-auto mt-10 w-full max-w-[480px] rounded-xl border border-slate-200 bg-white px-5 py-6 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-colors dark:border-slate-800 dark:bg-slate-900 sm:px-7 sm:py-7 lg:mt-12">
+      <section className="register-card mx-auto mt-10 w-full max-w-[480px] rounded-xl border border-slate-200 bg-white px-5 py-6 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-colors dark:border-slate-800 dark:bg-slate-900 sm:px-7 sm:py-7 lg:mt-12">
         <div className="mb-5 text-center">
           <h1 className="text-[25px] font-bold tracking-[-0.025em] text-slate-950 dark:text-white sm:text-[27px]">
             Sign in
@@ -73,7 +73,7 @@ export default function LoginPage() {
         <form className="space-y-3.5" noValidate onSubmit={handleSubmit(submitSignIn)}>
           <div>
             <label
-              className="mb-2.5 block text-[15px] font-semibold text-slate-800 dark:text-slate-100"
+              className="register-label mb-2.5 block text-[15px] font-semibold text-slate-800 dark:text-slate-100"
               htmlFor="email"
             >
               Email
@@ -81,14 +81,14 @@ export default function LoginPage() {
             <div className="relative">
               <FiMail
                 aria-hidden="true"
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                className="register-field-icon pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
                 size={21}
               />
               <input
                 aria-describedby={errors.email ? "email-error" : undefined}
                 aria-invalid={Boolean(errors.email)}
                 autoComplete="email"
-                className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-4 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+                className="register-input h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-4 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                 id="email"
                 placeholder="you@example.com"
                 type="email"
@@ -107,7 +107,7 @@ export default function LoginPage() {
 
           <div>
             <label
-              className="mb-2.5 block text-[15px] font-semibold text-slate-800 dark:text-slate-100"
+              className="register-label mb-2.5 block text-[15px] font-semibold text-slate-800 dark:text-slate-100"
               htmlFor="password"
             >
               Password
@@ -115,14 +115,14 @@ export default function LoginPage() {
             <div className="relative">
               <FiLock
                 aria-hidden="true"
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
+                className="register-field-icon pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400"
                 size={20}
               />
               <input
                 aria-describedby={errors.password ? "password-error" : undefined}
                 aria-invalid={Boolean(errors.password)}
                 autoComplete="current-password"
-                className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-11 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+                className="register-input h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-11 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
                 id="password"
                 placeholder="Enter your password"
                 type={isPasswordVisible ? "text" : "password"}
@@ -130,7 +130,7 @@ export default function LoginPage() {
               />
               <button
                 aria-label={isPasswordVisible ? "Hide password" : "Show password"}
-                className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                className="register-password-toggle absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 onClick={() => setIsPasswordVisible((visible) => !visible)}
                 type="button"
               >
@@ -157,7 +157,7 @@ export default function LoginPage() {
           ) : null}
 
           <button
-            className="h-11 w-full rounded-lg bg-blue-600 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-slate-900"
+            className="register-submit h-11 w-full rounded-lg bg-blue-600 text-[14px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-slate-900"
             disabled={isSubmitting}
             type="submit"
           >
@@ -165,14 +165,14 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-center text-[13px] text-slate-500 dark:text-slate-400">
+        <div className="register-divider my-5 flex items-center gap-3 text-center text-[13px] text-slate-500 dark:text-slate-400">
           <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
           <span>Don&apos;t have an account?</span>
           <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
         </div>
         <div className="text-center">
           <Link
-            className="text-[14px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+            className="register-link text-[14px] font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
             href="/register"
           >
             Create one

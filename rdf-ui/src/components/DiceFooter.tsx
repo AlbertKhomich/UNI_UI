@@ -24,7 +24,7 @@ export default function DiceFooter() {
 
       <nav
         aria-label="Legal"
-        className="flex items-center justify-center gap-2 border-t border-slate-200 py-5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400 sm:gap-3 sm:text-sm"
+        className="flex items-center justify-center gap-2 border-t border-slate-200 py-5 text-xs text-slate-500 dark:border-gray-600 dark:text-slate-400 sm:gap-3 sm:text-sm"
       >
         <Link className="transition hover:text-blue-600 dark:hover:text-blue-400" href="/privacy">
           Privacy

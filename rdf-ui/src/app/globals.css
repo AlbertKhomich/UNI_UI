@@ -46,12 +46,12 @@ body {
 .register-page {
   background:
     radial-gradient(circle at 50% 34%, rgba(61, 118, 255, 0.07), transparent 32%),
-    #f7f8fa;
+    var(--background);
 }
 
 .register-card {
   border-color: #d4d8e1;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--background);
   box-shadow: 0 18px 55px rgba(21, 31, 53, 0.09);
 }
 
@@ -88,7 +88,10 @@ body {
 .dark .register-card {
   border-color: rgba(168, 176, 190, 0.34);
   background: linear-gradient(145deg, rgba(27, 29, 33, 0.94), rgba(12, 13, 15, 0.96));
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5), 0 0 36px rgba(48, 97, 220, 0.05);
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(116, 153, 255, 0.08),
+    0 0 28px rgba(48, 97, 220, 0.12);
 }
 
 .dark .register-label {
@@ -169,8 +172,34 @@ body {
 }
 
 .dark .register-page footer nav {
-  border-color: rgba(151, 158, 171, 0.14);
   color: #8f949e;
+}
+
+.legal-register-palette main > section,
+.legal-register-palette main > article {
+  border-color: #d4d8e1;
+  background: var(--background);
+  box-shadow: 0 18px 55px rgba(21, 31, 53, 0.09);
+}
+
+.legal-register-palette main > section a,
+.legal-register-palette main > article a {
+  color: #2878e8;
+}
+
+.dark .legal-register-palette main > section,
+.dark .legal-register-palette main > article {
+  border-color: rgba(168, 176, 190, 0.34);
+  background: linear-gradient(145deg, rgba(27, 29, 33, 0.94), rgba(12, 13, 15, 0.96));
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(116, 153, 255, 0.08),
+    0 0 28px rgba(48, 97, 220, 0.12);
+}
+
+.dark .legal-register-palette main > section a,
+.dark .legal-register-palette main > article a {
+  color: #3e91ff;
 }
 
 .mode-panel-enter {
