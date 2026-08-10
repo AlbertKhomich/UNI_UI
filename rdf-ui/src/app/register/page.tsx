@@ -16,6 +16,8 @@ import {
 import DiceFooter from "@/components/DiceFooter";
 import PageContainer from "@/components/PageContainer";
 import SiteHeader from "@/components/SiteHeader";
+import PrivacyPolicy from "@/components/legal/PrivacyPolicy";
+import TermsOfUse from "@/components/legal/TermsOfUse";
 import { useTheme } from "@/hooks/useTheme";
 import {
   registrationSchema,
@@ -250,58 +252,8 @@ export default function RegisterPage() {
                 className="space-y-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                 id="legal-terms"
               >
-                <section aria-labelledby="terms-of-use-heading">
-                  <h2 className="text-lg font-bold text-slate-950 dark:text-white" id="terms-of-use-heading">
-                    Terms of Use
-                  </h2>
-                  <div className="mt-2 space-y-3">
-                    <p>
-                      This service is provided for research and informational purposes. Users are responsible for the
-                      content they upload and must not upload unlawful or unauthorized material.
-                    </p>
-                    <p>
-                      Uploaded documents may be stored and processed to provide the RAG functionality. The service may
-                      change or become temporarily unavailable.
-                    </p>
-                    <p>By using this service, you agree to these Terms of Use.</p>
-                  </div>
-                </section>
-
-                <section aria-labelledby="privacy-policy-heading">
-                  <h2 className="text-lg font-bold text-slate-950 dark:text-white" id="privacy-policy-heading">
-                    Privacy Policy
-                  </h2>
-                  <div className="mt-2 space-y-3">
-                    <p>
-                      We process your email address, account information, uploaded documents, and queries to provide and
-                      operate this service.
-                    </p>
-                    <p>
-                      Uploaded documents and related data are stored only as necessary for providing the service and are
-                      not used for unrelated purposes.
-                    </p>
-                    <p>
-                      Data is deleted when it is no longer required or when your account/data is deleted, unless legal
-                      retention requirements apply.
-                    </p>
-                    <p>
-                      You have the rights provided under the GDPR, including access, correction, deletion, restriction,
-                      and objection.
-                    </p>
-                    <div>
-                      <p><strong>Controller:</strong> Dice Research Group</p>
-                      <p>
-                        <strong>Contact:</strong>{" "}
-                        <a
-                          className="font-semibold text-blue-600 underline decoration-blue-600/50 underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                          href="mailto:akhomich@mail.uni-paderborn.de"
-                        >
-                          akhomich@mail.uni-paderborn.de
-                        </a>
-                      </p>
-                    </div>
-                  </div>
-                </section>
+                <TermsOfUse headingLevel="h2" />
+                <PrivacyPolicy headingLevel="h2" />
               </div>
             ) : null}
 
