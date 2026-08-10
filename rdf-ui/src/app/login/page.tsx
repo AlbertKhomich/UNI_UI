@@ -180,7 +180,7 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <DiceFooter className="mt-auto pb-2 pt-10" />
+      <DiceFooter />
     </PageContainer>
   );
 }

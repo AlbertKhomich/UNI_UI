@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useState } from "react";
-import { FiLogIn, FiLogOut, FiMoon, FiSun } from "react-icons/fi";
+import { FiHome, FiLogIn, FiLogOut, FiMoon, FiSun } from "react-icons/fi";
 
 type SiteHeaderProps = {
   isDark: boolean;
@@ -59,6 +59,18 @@ export default function SiteHeader({
         />
       </a>
       <div className="flex items-center gap-2">
+        <Link
+          aria-label="Home"
+          className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            isDark
+              ? "border-gray-500 text-gray-100 hover:bg-gray-800"
+              : "border-gray-300 text-gray-700 hover:bg-gray-100"
+          }`}
+          href="/"
+          title="Home"
+        >
+          <FiHome aria-hidden="true" size={18} />
+        </Link>
         {authStatus === "authenticated" ? (
           <button
             className={`${headerButtonClass} disabled:cursor-wait disabled:opacity-60`}

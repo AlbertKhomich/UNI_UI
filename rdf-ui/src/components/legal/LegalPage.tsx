@@ -24,7 +24,7 @@ export default function LegalPage({ children }: LegalPageProps) {
         {children}
       </article>
 
-      <DiceFooter className="mt-auto pt-10" />
+      <DiceFooter />
     </PageContainer>
   );
 }

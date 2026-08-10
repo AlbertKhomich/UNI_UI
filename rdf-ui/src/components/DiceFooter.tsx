@@ -1,13 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 
-type DiceFooterProps = {
-  className?: string;
-};
-
-export default function DiceFooter({ className = "" }: DiceFooterProps) {
+export default function DiceFooter() {
   return (
-    <footer className={`w-full ${className}`}>
+    <footer className="mt-auto w-full pb-2 pt-10">
       <div className="flex justify-center py-8">
         <a
           aria-label="DICE research group"

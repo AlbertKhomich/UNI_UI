@@ -542,7 +542,7 @@ export default function HomePage() {
   }
 
   return (
-    <PageContainer>
+    <PageContainer className="flex min-h-screen flex-col">
       <SiteHeader
         className="mb-4"
         isDark={isDark}
@@ -628,7 +628,7 @@ export default function HomePage() {
         subtleTextClass={subtleTextClass}
       />
 
-      <DiceFooter className="mt-18" />
+      <DiceFooter />
     </PageContainer>
   );
 }
