@@ -42,11 +42,82 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.graph-background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #f8fafc;
+}
+
+.graph-background__canvas,
+.graph-background__center,
+.graph-background__vignette {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-background__center {
+  background: radial-gradient(ellipse 47% 68% at 50% 48%,
+      rgba(248, 250, 252, 0.94) 0%,
+      rgba(248, 250, 252, 0.72) 48%,
+      transparent 82%);
+}
+
+.graph-background__vignette {
+  background:
+    radial-gradient(ellipse at center, transparent 52%, rgba(69, 89, 119, 0.08) 100%),
+    linear-gradient(to bottom, rgba(248, 250, 252, 0.35), transparent 18%, transparent 82%, rgba(248, 250, 252, 0.4));
+}
+
+.app-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+.dark .graph-background {
+  background: #080b10;
+}
+
+.dark .graph-background__center {
+  background: radial-gradient(ellipse 47% 68% at 50% 48%,
+      rgba(8, 11, 16, 0.95) 0%,
+      rgba(8, 11, 16, 0.76) 48%,
+      transparent 82%);
+}
+
+.dark .graph-background__vignette {
+  background:
+    radial-gradient(ellipse at center, transparent 48%, rgba(0, 2, 7, 0.48) 100%),
+    linear-gradient(to bottom, rgba(8, 11, 16, 0.38), transparent 18%, transparent 82%, rgba(8, 11, 16, 0.48));
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not(.light):not(.dark) .graph-background {
+    background: #080b10;
+  }
+
+  html:not(.light):not(.dark) .graph-background__center {
+    background: radial-gradient(ellipse 47% 68% at 50% 48%,
+        rgba(8, 11, 16, 0.95) 0%,
+        rgba(8, 11, 16, 0.76) 48%,
+        transparent 82%);
+  }
+
+  html:not(.light):not(.dark) .graph-background__vignette {
+    background:
+      radial-gradient(ellipse at center, transparent 48%, rgba(0, 2, 7, 0.48) 100%),
+      linear-gradient(to bottom, rgba(8, 11, 16, 0.38), transparent 18%, transparent 82%, rgba(8, 11, 16, 0.48));
+  }
+}
+
 /* Create-account palette, matched to the graphite and electric-blue mockup. */
 .register-page {
-  background:
-    radial-gradient(circle at 50% 34%, rgba(61, 118, 255, 0.07), transparent 32%),
-    var(--background);
+  background: transparent;
 }
 
 .register-card {
@@ -80,9 +151,7 @@ body {
 }
 
 .dark .register-page {
-  background:
-    radial-gradient(circle at 50% 34%, rgba(46, 104, 255, 0.08), transparent 31%),
-    #090a0c;
+  background: transparent;
 }
 
 .dark .register-card {
@@ -157,8 +226,8 @@ body {
   color: #969ba5;
 }
 
-.dark .register-divider > span:first-child,
-.dark .register-divider > span:last-child {
+.dark .register-divider>span:first-child,
+.dark .register-divider>span:last-child {
   background: #484c54;
 }
 
@@ -166,29 +235,29 @@ body {
   color: #3e91ff;
 }
 
-.dark .register-page header a,
+/* .dark .register-page header a,
 .dark .register-page header button {
   border-color: rgba(151, 158, 171, 0.38);
 }
 
 .dark .register-page footer nav {
   color: #8f949e;
-}
+} */
 
-.legal-register-palette main > section,
-.legal-register-palette main > article {
+.legal-register-palette main>section,
+.legal-register-palette main>article {
   border-color: #d4d8e1;
   background: var(--background);
   box-shadow: 0 18px 55px rgba(21, 31, 53, 0.09);
 }
 
-.legal-register-palette main > section a,
-.legal-register-palette main > article a {
+.legal-register-palette main>section a,
+.legal-register-palette main>article a {
   color: #2878e8;
 }
 
-.dark .legal-register-palette main > section,
-.dark .legal-register-palette main > article {
+.dark .legal-register-palette main>section,
+.dark .legal-register-palette main>article {
   border-color: rgba(168, 176, 190, 0.34);
   background: linear-gradient(145deg, rgba(27, 29, 33, 0.94), rgba(12, 13, 15, 0.96));
   box-shadow:
@@ -197,8 +266,8 @@ body {
     0 0 28px rgba(48, 97, 220, 0.12);
 }
 
-.dark .legal-register-palette main > section a,
-.dark .legal-register-palette main > article a {
+.dark .legal-register-palette main>section a,
+.dark .legal-register-palette main>article a {
   color: #3e91ff;
 }
 

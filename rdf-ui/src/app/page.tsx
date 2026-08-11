@@ -310,7 +310,7 @@ export default function HomePage() {
   const subtleTextClass = isDark ? "text-gray-400" : "text-gray-500";
   const searchInputClass = isDark
     ? "w-full rounded-xl border border-gray-500 bg-transparent px-3 py-3 text-base outline-none focus:border-gray-300"
-    : "w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base outline-none focus:border-gray-500";
+    : "w-full rounded-xl border border-gray-300 bg-transparent px-3 py-3 text-base outline-none focus:border-gray-500";
   const prefixButtonClass = isDark
     ? "rounded-xl border border-gray-500 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-800"
     : "rounded-xl border border-gray-300 bg-transparent px-3 py-1.5 text-sm transition-colors hover:bg-gray-100";
