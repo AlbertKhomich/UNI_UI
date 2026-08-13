@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Point = readonly [number, number];
 type Edge = readonly [number, number, number];
@@ -51,6 +51,7 @@ function isDarkTheme() {
 
 export default function GraphBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -151,6 +152,7 @@ export default function GraphBackground() {
 
     resize();
     draw();
+    setIsReady(true);
     window.addEventListener("resize", handleResize);
     window.addEventListener("scroll", requestDraw, { passive: true });
 
@@ -170,7 +172,12 @@ export default function GraphBackground() {
 
   return (
     <div className="graph-background" aria-hidden="true">
-      <canvas ref={canvasRef} className="graph-background__canvas" />
+      <canvas
+        ref={canvasRef}
+        className={`graph-background__canvas opacity-0 transition-opacity duration-[2500ms] ease-out motion-reduce:transition-none ${
+          isReady ? "opacity-100" : ""
+        }`}
+      />
       <div className="graph-background__center" />
       <div className="graph-background__vignette" />
     </div>
