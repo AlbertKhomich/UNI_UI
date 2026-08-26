@@ -152,7 +152,9 @@ export default function GraphBackground() {
 
     resize();
     draw();
-    setIsReady(true);
+    const readyFrame = window.requestAnimationFrame(() => {
+      setIsReady(true);
+    });
     window.addEventListener("resize", handleResize);
     window.addEventListener("scroll", requestDraw, { passive: true });
 
@@ -163,6 +165,7 @@ export default function GraphBackground() {
     });
 
     return () => {
+      window.cancelAnimationFrame(readyFrame);
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("scroll", requestDraw);
