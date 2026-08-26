@@ -23,7 +23,7 @@ describe("GET /api/top-countries", () => {
     };
     mockedGetCountries.mockResolvedValue(payload);
 
-    const response = await GET(new Request("http://localhost/api/top-countries"));
+    const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -34,7 +34,7 @@ describe("GET /api/top-countries", () => {
   it("returns 500 on downstream failures", async () => {
     mockedGetCountries.mockRejectedValue(new Error("failed to fetch"));
 
-    const response = await GET(new Request("http://localhost/api/top-countries"));
+    const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(500);

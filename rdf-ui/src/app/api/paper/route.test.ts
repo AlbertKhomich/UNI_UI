@@ -113,8 +113,8 @@ describe("GET /api/paper", () => {
     }>;
     const jane = detailedAuthors.find((author) => author.iri === "https://example.org/author/1");
     expect(jane).toBeDefined();
-    expect(jane.affiliations).toHaveLength(2);
-    expect(jane.affiliations[0]).toMatchObject({
+    expect(jane?.affiliations).toHaveLength(2);
+    expect(jane?.affiliations[0]).toMatchObject({
       iri: "https://example.org/aff/1",
       sameAs: "https://ror.org/01",
       countryRaw: "US",
