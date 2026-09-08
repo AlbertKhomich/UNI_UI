@@ -41,6 +41,10 @@ function escapeMarkdownLabel(label: string): string {
   return label.replace(/([\\[\]])/g, "\\$1");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function normalizeMathDelimiters(text: string): string {
   return text
     .replace(/\\\[/g, () => "$$")
@@ -50,20 +54,45 @@ function normalizeMathDelimiters(text: string): string {
 }
 
 function addSourceLinks(text: string, sources: RagSource[]): string {
-  return text.replace(/\[([^\]]*doc\s+[^\]]+)\]/gi, (citation) => {
-    const ids = Array.from(citation.matchAll(/doc\s+([A-Za-z0-9-]+)(?:#[\w.-]+)?/gi), (match) => match[1]);
+  const sourcesByDocumentId = new Map<string, RagSource[]>();
+
+  for (const source of sources) {
+    if (!source.document_id) continue;
+    const matches = sourcesByDocumentId.get(source.document_id) ?? [];
+    matches.push(source);
+    sourcesByDocumentId.set(source.document_id, matches);
+  }
+
+  const documentIds = [...sourcesByDocumentId.keys()].sort((left, right) => right.length - left.length);
+  if (documentIds.length === 0) return text;
+
+  const ids = documentIds.map(escapeRegExp).join("|");
+  const optionalDocPrefix = "(?:[dD][oO][cC](?:ument)?\\s*[:#-]?\\s*)?";
+  const optionalChunkSuffix = "(?:#[\\w.-]+)?";
+  const citationPattern = new RegExp(
+    [
+      `\\[+\\s*${optionalDocPrefix}(${ids})${optionalChunkSuffix}\\s*\\]+`,
+      `\\(+\\s*${optionalDocPrefix}(${ids})${optionalChunkSuffix}\\s*\\)+`,
+      `\\{+\\s*${optionalDocPrefix}(${ids})${optionalChunkSuffix}\\s*\\}+`,
+      `【+\\s*${optionalDocPrefix}(${ids})${optionalChunkSuffix}\\s*】+`,
+      `<+\\s*${optionalDocPrefix}(${ids})${optionalChunkSuffix}\\s*>+`,
+      `(?<![A-Za-z0-9_-])${optionalDocPrefix}(${ids})${optionalChunkSuffix}(?![A-Za-z0-9_-])`,
+    ].join("|"),
+    "g",
+  );
+
+  return text.replace(citationPattern, (citation, ...captures: unknown[]) => {
+    const documentId = captures.slice(0, 6).find((value): value is string => typeof value === "string");
+    if (!documentId) return citation;
+
     const seen = new Set<string>();
-    const links = ids.flatMap((id) =>
-      sources
-        .filter((source) => source.document_id === id)
-        .flatMap((source, index) => {
-          const href = sourceHref(source);
-          const key = source.chunk_id ?? href;
-          if (!href || !key || seen.has(key)) return [];
-          seen.add(key);
-          return [`[${escapeMarkdownLabel(shortSourceLabel(source, index))}](${href})`];
-        }),
-    );
+    const links = (sourcesByDocumentId.get(documentId) ?? []).flatMap((source, index) => {
+      const href = sourceHref(source);
+      const key = source.chunk_id ?? href;
+      if (!href || !key || seen.has(key)) return [];
+      seen.add(key);
+      return [`[${escapeMarkdownLabel(shortSourceLabel(source, index))}](${href})`];
+    });
 
     return links.length > 0 ? links.join(" ") : citation;
   });
