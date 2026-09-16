@@ -46,7 +46,7 @@ export default function SiteHeader({
       <a
         aria-label="Open SPARQL endpoint"
         className="inline-flex rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-4 dark:focus-visible:ring-offset-slate-950"
-        href="http://upbkg.data.dice-research.org/sparql"
+        href="http://upbkg.data.dice-research.org/ui"
         rel="noreferrer"
         target="_blank"
       >
