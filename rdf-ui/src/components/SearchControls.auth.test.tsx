@@ -24,6 +24,8 @@ function renderAiControls(overrides: Partial<React.ComponentProps<typeof SearchC
     onQueryChange: vi.fn(),
     onRequestUpload: vi.fn(),
     onToggleAi: vi.fn(),
+    onToggleTrr318: vi.fn(),
+    trr318Enabled: false,
     onUploadDocument: vi.fn(),
     onYearRangeChange: vi.fn(),
     prefixButtonClass: "button",
