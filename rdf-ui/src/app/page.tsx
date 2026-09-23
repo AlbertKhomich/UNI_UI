@@ -228,6 +228,7 @@ export default function HomePage() {
   const router = useRouter();
   const { status: authStatus } = useSession();
   const [q, setQ] = useState("");
+  const [trr318Enabled, setTrr318Enabled] = useState(false);
   const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
   const [describeIri, setDescribeIri] = useState<string | null>(null);
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -285,6 +286,7 @@ export default function HomePage() {
     debouncedAuthorIri,
     yearFrom,
     yearTo,
+    trr318Enabled: !aiEnabled && trr318Enabled,
   });
   const {
     body: describeBody,
@@ -585,6 +587,8 @@ export default function HomePage() {
         onQueryChange={handleQueryChange}
         onRequestUpload={handleRequestUpload}
         onToggleAi={handleToggleAi}
+        onToggleTrr318={setTrr318Enabled}
+        trr318Enabled={trr318Enabled}
         onUploadDocument={handleUploadDocument}
         onYearRangeChange={setYearRange}
         prefixButtonClass={prefixButtonClass}

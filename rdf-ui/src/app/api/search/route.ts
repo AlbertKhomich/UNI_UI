@@ -519,7 +519,16 @@ function parseOmni(raw: string): ParsedOmni {
   };
 }
 
-function buildDirectQuery(paperIri: string) {
+function buildTrr318Filter(enabled: boolean): string {
+  return enabled ? `
+    FILTER EXISTS {
+      ?paper <https://schema.org/keywords> ?trr318Keyword .
+      FILTER(CONTAINS(LCASE(STR(?trr318Keyword)), "trr_318"))
+    }
+  ` : "";
+}
+
+function buildDirectQuery(paperIri: string, trr318Enabled: boolean) {
     return `${PREFIXES}
     SELECT
       ?paper
@@ -529,6 +538,7 @@ function buildDirectQuery(paperIri: string) {
       (GROUP_CONCAT(DISTINCT STR(?a); separator="|") AS ?authorIris)
     WHERE {
       BIND(<${paperIri}> AS ?paper)
+      ${buildTrr318Filter(trr318Enabled)}
       ${EXCLUDE_SAMMELBAND_FILTER}
       OPTIONAL { ?paper schema:name ?name . }
       OPTIONAL { ?paper schema:datePublished ?year0 . }
@@ -686,6 +696,7 @@ function buildSearchQuery(args: {
     countryQ: string;
     countryCodes: string[];
     yearRange: YearRangeFilter | null;
+    trr318Enabled: boolean;
     directAuthorIri?: string | null;
     mode: "starts" | "contains";
     limit: number;
@@ -700,6 +711,7 @@ function buildSearchQuery(args: {
       countryQ,
       countryCodes,
       yearRange,
+      trr318Enabled,
       directAuthorIri,
       mode,
       limit,
@@ -762,6 +774,7 @@ function buildSearchQuery(args: {
           ${authorJoinPattern}
           ${affiliationJoinPattern}
           ${countryJoinPattern}
+          ${buildTrr318Filter(trr318Enabled)}
         }
         GROUP BY ?paper
         ${cursorHaving}
@@ -796,10 +809,11 @@ function buildCountQuery(args: {
     countryQ: string;
     countryCodes: string[];
     yearRange: YearRangeFilter | null;
+    trr318Enabled: boolean;
     directAuthorIri?: string | null;
     mode: "starts" | "contains";
 }) {
-    const { titleQ, authorQ, yearQ, affiliationQ, countryQ, countryCodes, yearRange, directAuthorIri, mode } = args;
+    const { titleQ, authorQ, yearQ, affiliationQ, countryQ, countryCodes, yearRange, trr318Enabled, directAuthorIri, mode } = args;
 
     const titleLit = titleQ ? escapeSparqlStringLiteral(titleQ) : "";
 
@@ -832,6 +846,7 @@ function buildCountQuery(args: {
       ${authorJoinPattern}
       ${affiliationJoinPattern}
       ${countryJoinPattern}
+      ${buildTrr318Filter(trr318Enabled)}
     }
     `;
 }
@@ -854,7 +869,8 @@ export async function GET(req: Request) {
         const url = new URL(req.url);
         const raw = (url.searchParams.get("q") ?? url.searchParams.get("title") ?? "").trim();
         const yearRange = readYearRange(url);
-        if (!raw && !yearRange) return NextResponse.json({ items: [], total: 0, nextCursor: null });
+        const trr318Enabled = url.searchParams.get("trr318") === "true";
+        if (!raw && !yearRange && !trr318Enabled) return NextResponse.json({ items: [], total: 0, nextCursor: null });
 
         if (raw.length > 300) return NextResponse.json({ error: "Querry too long" }, {status: 400 });
         const rawCursor = (url.searchParams.get("cursor") ?? "").trim();
@@ -867,7 +883,7 @@ export async function GET(req: Request) {
         const parsed = parseOmni(raw);
         
         const cacheKey = 
-          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|yf=${yearRange?.from ?? ""}|yt=${yearRange?.to ?? ""}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
+          `t=${parsed.titleQ.toLowerCase()}|a=${parsed.authorQ.toLowerCase()}|y=${parsed.yearQ}|yf=${yearRange?.from ?? ""}|yt=${yearRange?.to ?? ""}|af=${parsed.affiliationQ.toLowerCase()}|c=${parsed.countryQ.toLowerCase()}|cc=${parsed.countryCodes.join(",")}|pi=${(parsed.directPaperIri ?? "").toLowerCase()}|id=${parsed.directRisId ?? ""}|ai=${(parsed.directAuthorIri ?? "").toLowerCase()}|trr318=${trr318Enabled}|cur=${rawCursor}|o=${effectiveOffset}|l=${limit}`;
         const cached = cacheGet(cacheKey);
         if (cached) return NextResponse.json(cached);
         const directAuthorMetaPromise = parsed.directAuthorIri
@@ -879,7 +895,7 @@ export async function GET(req: Request) {
     
         if (parsed.directPaperIri || parsed.directRisId) {
             const directPaperIri = parsed.directPaperIri ?? paperIriFromId(parsed.directRisId ?? "");
-            const allRows = await sparqlSelect(buildDirectQuery(directPaperIri));
+            const allRows = await sparqlSelect(buildDirectQuery(directPaperIri, trr318Enabled));
             total = allRows.length;
             rows = !cursor && effectiveOffset === 0 ? allRows.slice(0, limit) : [];
         } else {
@@ -888,6 +904,7 @@ export async function GET(req: Request) {
               !parsed.authorQ &&
               !parsed.yearQ &&
               !yearRange &&
+              !trr318Enabled &&
               !parsed.affiliationQ &&
               !parsed.countryQ &&
               !parsed.directAuthorIri
@@ -904,6 +921,7 @@ export async function GET(req: Request) {
             const q1 = buildSearchQuery({
               ...parsed,
               yearRange,
+              trr318Enabled,
               mode: modeUsed,
               limit: fetchLimit,
               offset: effectiveOffset,
@@ -916,6 +934,7 @@ export async function GET(req: Request) {
                   buildSearchQuery({
                     ...parsed,
                     yearRange,
+                    trr318Enabled,
                     mode: modeUsed,
                     limit: fetchLimit,
                     offset: effectiveOffset,
@@ -924,7 +943,7 @@ export async function GET(req: Request) {
                 );
             }
 
-            const countRows = await sparqlSelect(buildCountQuery({ ...parsed, yearRange, mode: modeUsed }));
+            const countRows = await sparqlSelect(buildCountQuery({ ...parsed, yearRange, trr318Enabled, mode: modeUsed }));
             total = Number(countRows[0]?.total?.value ?? 0) || 0;
         }
 

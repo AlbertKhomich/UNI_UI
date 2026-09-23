@@ -38,6 +38,8 @@ type SearchControlsProps = {
   onClearAttachments: () => void;
   onRequestUpload: () => void;
   onToggleAi: (enabled: boolean) => void;
+  onToggleTrr318: (enabled: boolean) => void;
+  trr318Enabled: boolean;
   onUploadDocument: (files: File[]) => void;
   onQueryChange: (next: string) => void;
   onYearRangeChange: (next: SearchYearRange) => void;
@@ -70,6 +72,8 @@ export default function SearchControls(props: SearchControlsProps) {
     onClearAttachments,
     onRequestUpload,
     onToggleAi,
+    onToggleTrr318,
+    trr318Enabled,
     onUploadDocument,
     onQueryChange,
     onYearRangeChange,
@@ -218,6 +222,14 @@ export default function SearchControls(props: SearchControlsProps) {
             </button>
             <button type="button" className={prefixButtonClass} onClick={() => onApplyPrefix("c:")}>
               country
+            </button>
+            <button
+              type="button"
+              className={`${prefixButtonClass}${trr318Enabled ? " ring-2 ring-green-500" : ""}`}
+              aria-pressed={trr318Enabled}
+              onClick={() => onToggleTrr318(!trr318Enabled)}
+            >
+              TRR 318
             </button>
           </div>
         )}

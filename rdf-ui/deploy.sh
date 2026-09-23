@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "$EUID" -eq 0 ]]; then
+  echo "ERROR: Do not run this script with sudo/root."
+  echo "Run it as: ./deploy.sh"
+  exit 1
+fi
+
 export NVM_DIR="/upb/users/a/akhomich/profiles/unix/cs/.nvm"
 # shellcheck disable=SC1091
 source "$NVM_DIR/nvm.sh"
