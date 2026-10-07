@@ -15,6 +15,7 @@ import { useCountryStats } from "@/hooks/useCountryStats";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSearchState } from "@/hooks/useSearchState";
 import { useTheme } from "@/hooks/useTheme";
+import { withRagSessionRetry } from "@/lib/ragRetry";
 import {
   canonicalizeUpbkgIri,
   extractDirectAuthorIri,
@@ -179,27 +180,33 @@ async function readRagStream(response: Response, onEvent: (event: RagStreamEvent
     return event.type === "done";
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const event = JSON.parse(line) as RagStreamEvent;
-      if (handleEvent(event)) {
-        await reader.cancel().catch(() => undefined);
-        return;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as RagStreamEvent;
+        if (handleEvent(event)) {
+          await reader.cancel().catch(() => undefined);
+          return;
+        }
       }
+
+      if (done) break;
     }
 
-    if (done) break;
-  }
-
-  if (buffer.trim()) {
-    const event = JSON.parse(buffer) as RagStreamEvent;
-    handleEvent(event);
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer) as RagStreamEvent;
+      if (handleEvent(event)) return;
+    }
+    throw new Error("RAG stream ended before the answer was complete.");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }
 async function copyShareUrl(value: string): Promise<void> {
@@ -424,6 +431,15 @@ export default function HomePage() {
     if (enabled) void initializeRagSession();
   }
 
+  async function refreshRagSession(): Promise<void> {
+    const response = await fetch("/api/rag/session", { method: "PATCH" });
+    await readApiJson(response, "Failed to refresh your RAG session");
+    setRagSessionStatus("ready");
+    setHasAiDocuments(false);
+    setAiDocumentStatus("idle");
+    setAiSources([]);
+  }
+
   async function handleUploadDocument(files: File[]): Promise<void> {
     if (authStatus !== "authenticated") {
       router.replace("/login");
@@ -440,13 +456,16 @@ export default function HomePage() {
     setAiDocumentStatus("uploading");
 
     try {
-      const form = new FormData();
-      for (const file of files) form.append("files", file, file.name);
-      const response = await fetch("/api/rag/upload", {
-        method: "POST",
-        body: form,
-      });
-      await readApiJson(response, "Failed to upload document");
+      await withRagSessionRetry(authStatus === "authenticated", async () => {
+        setAiDocumentStatus("uploading");
+        const form = new FormData();
+        for (const file of files) form.append("files", file, file.name);
+        const response = await fetch("/api/rag/upload", {
+          method: "POST",
+          body: form,
+        });
+        await readApiJson(response, "Failed to upload document");
+      }, refreshRagSession);
       await pollDocumentStatus();
     } catch (error: unknown) {
       setAiDocumentStatus("failed");
@@ -498,19 +517,23 @@ export default function HomePage() {
     setAiSources([]);
 
     try {
-      const response = await fetch("/api/rag/ask-stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
-      });
-      await readRagStream(response, (event) => {
-        if (event.type === "token" && typeof event.text === "string") {
-          setAiAnswer((answer) => `${answer}${event.text}`);
-        }
-        if (event.type === "done") {
-          setAiSources(readSources(event));
-        }
-      });
+      await withRagSessionRetry(authStatus === "authenticated", async () => {
+        setAiAnswer("");
+        setAiSources([]);
+        const response = await fetch("/api/rag/ask-stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        await readRagStream(response, (event) => {
+          if (event.type === "token" && typeof event.text === "string") {
+            setAiAnswer((answer) => `${answer}${event.text}`);
+          }
+          if (event.type === "done") {
+            setAiSources(readSources(event));
+          }
+        });
+      }, refreshRagSession);
     } catch (error: unknown) {
       setAiError(error instanceof Error ? error.message : "Failed to ask RAG session");
     } finally {

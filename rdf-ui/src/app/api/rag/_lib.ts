@@ -141,6 +141,13 @@ export async function ensureUserRagSession(): Promise<RagSession> {
   return ensureRagSessionForUser(await requireCurrentUser());
 }
 
+export async function refreshUserRagSession(): Promise<RagSession> {
+  const user = await requireCurrentUser();
+  // Issue and persist a replacement without relying on the old token to delete
+  // the expired session. Keep the stored credentials if issuance fails.
+  return ensureRagSessionForUser({ ...user, ragSessionId: null, ragSessionToken: null });
+}
+
 export async function requireUserRagSession(): Promise<RagSession> {
   const user = await requireCurrentUser();
   const session = storedRagSession(user);
