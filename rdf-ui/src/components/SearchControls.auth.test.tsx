@@ -1,7 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import SearchControls from "./SearchControls";
+
+afterEach(cleanup);
 
 function renderAiControls(overrides: Partial<React.ComponentProps<typeof SearchControls>> = {}) {
   const props: React.ComponentProps<typeof SearchControls> = {
@@ -11,6 +13,9 @@ function renderAiControls(overrides: Partial<React.ComponentProps<typeof SearchC
     aiEnabled: true,
     aiError: null,
     aiLoading: false,
+    aiSessionReady: true,
+    aiSessionError: false,
+    onRetryAiSession: vi.fn(),
     aiSources: [],
     canSearch: false,
     err: null,
@@ -75,5 +80,34 @@ describe("SearchControls upload authorization", () => {
     await user.click(screen.getByRole("button", { name: "Clear attachments" }));
 
     expect(props.onClearAttachments).toHaveBeenCalledOnce();
+  });
+});
+
+
+describe("AI session readiness", () => {
+  it("blocks clicks and Enter while preparing a session", async () => {
+    const user = userEvent.setup();
+    const props = renderAiControls({ query: "Question", aiSessionReady: false });
+    expect(screen.getByRole("button", { name: "ask" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "ask" }));
+    await user.click(screen.getByRole("textbox"));
+    await user.keyboard("{Enter}");
+    expect(props.onAskAi).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing AI");
+  });
+
+  it("allows asking after setup completes", async () => {
+    const user = userEvent.setup();
+    const props = renderAiControls({ query: "Question" });
+    await user.click(screen.getByRole("button", { name: "ask" }));
+    expect(props.onAskAi).toHaveBeenCalledOnce();
+  });
+
+  it("offers retry when setup fails", async () => {
+    const user = userEvent.setup();
+    const props = renderAiControls({ query: "Question", aiSessionReady: false, aiSessionError: true });
+    await user.click(screen.getByRole("button", { name: "Retry AI setup" }));
+    expect(props.onRetryAiSession).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "ask" })).toBeDisabled();
   });
 });

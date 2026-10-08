@@ -15,7 +15,7 @@ import { useCountryStats } from "@/hooks/useCountryStats";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSearchState } from "@/hooks/useSearchState";
 import { useTheme } from "@/hooks/useTheme";
-import { withRagSessionRetry } from "@/lib/ragRetry";
+import { RagStreamError, withRagSessionRetry } from "@/lib/ragRetry";
 import {
   canonicalizeUpbkgIri,
   extractDirectAuthorIri,
@@ -42,6 +42,9 @@ type RagStreamEvent = {
   type?: unknown;
   text?: unknown;
   error?: unknown;
+  description?: unknown;
+  message?: unknown;
+  detail?: unknown;
   citations?: unknown;
   sources?: unknown;
 };
@@ -172,10 +175,16 @@ async function readRagStream(response: Response, onEvent: (event: RagStreamEvent
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let hasAnswerText = false;
   const handleEvent = (event: RagStreamEvent): boolean => {
+    if (event.type === "token" && typeof event.text === "string" && event.text.length > 0) hasAnswerText = true;
     onEvent(event);
     if (event.type === "error") {
-      throw new Error(typeof event.error === "string" ? event.error : "Failed to ask RAG session");
+      throw new RagStreamError(
+        typeof event.error === "string" ? event.error : "Failed to ask RAG session",
+        hasAnswerText,
+        readOptionalString(event, ["description", "message", "detail"]),
+      );
     }
     return event.type === "done";
   };
@@ -233,7 +242,9 @@ async function copyShareUrl(value: string): Promise<void> {
 
 export default function HomePage() {
   const router = useRouter();
-  const { status: authStatus } = useSession();
+  const { data: authSession, status: authStatus } = useSession();
+  const ragOwner = authStatus === "loading" ? null : authStatus === "authenticated"
+    ? `user:${authSession?.user?.email ?? ""}` : "demo";
   const [q, setQ] = useState("");
   const [trr318Enabled, setTrr318Enabled] = useState(false);
   const [yearRange, setYearRange] = useState<SearchYearRange>(["", ""]);
@@ -249,7 +260,9 @@ export default function HomePage() {
   const [ragSessionStatus, setRagSessionStatus] = useState<RagSessionStatus>("idle");
   const dq = useDebounce(aiEnabled ? "" : q, 400);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const ragInitializationStartedRef = useRef(false);
+  const ragInitializationRef = useRef<{ owner: string; controller: AbortController } | null>(null);
+  const [readyRagOwner, setReadyRagOwner] = useState<string | null>(null);
+  const aiSessionReady = ragOwner !== null && readyRagOwner === ragOwner && ragSessionStatus === "ready";
 
   const { isDark, setTheme, theme } = useTheme();
   const {
@@ -386,38 +399,46 @@ export default function HomePage() {
   }, []);
 
   const initializeRagSession = useCallback(async (): Promise<void> => {
-    if (authStatus === "loading" || ragInitializationStartedRef.current) return;
-
-    ragInitializationStartedRef.current = true;
+    if (ragOwner === null) return;
+    const previous = ragInitializationRef.current;
+    if (previous?.owner === ragOwner && !previous.controller.signal.aborted) return;
+    previous?.controller.abort();
+    const controller = new AbortController();
+    ragInitializationRef.current = { owner: ragOwner, controller };
+    const { signal } = controller;
+    setReadyRagOwner(null);
     setRagSessionStatus("loading");
     setAiError(null);
+    setAiAnswer("");
+    setAiSources([]);
+    setHasAiDocuments(false);
+    setAiDocumentStatus("idle");
 
     try {
-      const response = await fetch("/api/rag/session", { method: "POST" });
-
-      if (response.status === 401) {
-        ragInitializationStartedRef.current = false;
-        setRagSessionStatus("idle");
-        router.replace("/login");
-        return;
-      }
-
+      const response = await fetch("/api/rag/session", { method: "POST", signal });
       await readApiJson(response, "Failed to prepare your RAG session");
+      if (signal.aborted) return;
+      const documents = await fetch("/api/rag/documents", { signal });
+      const payload = await readApiJson(documents, "Failed to load document status");
+      if (signal.aborted) return;
+      const statuses = collectDocumentStatuses(payload);
+      setHasAiDocuments(hasDocuments(payload));
+      setAiDocumentStatus(statuses.length > 0 ? summarizeDocumentStatus(statuses) : "idle");
+      setReadyRagOwner(ragOwner);
       setRagSessionStatus("ready");
-      await pollDocumentStatus().catch((error: unknown) => {
-        setAiError(error instanceof Error ? error.message : "Failed to load document status");
-      });
     } catch (error: unknown) {
-      ragInitializationStartedRef.current = false;
+      if (signal.aborted) return;
+      ragInitializationRef.current = null;
       setRagSessionStatus("error");
       setAiError(error instanceof Error ? error.message : "Failed to prepare your RAG session");
     }
-  }, [authStatus, pollDocumentStatus, router]);
+  }, [ragOwner]);
 
   useEffect(() => {
     if (authStatus === "authenticated" || (authStatus === "unauthenticated" && aiEnabled)) {
       void initializeRagSession();
     }
+    return () => ragInitializationRef.current?.controller.abort();
   }, [aiEnabled, authStatus, initializeRagSession]);
 
   function handleToggleAi(enabled: boolean): void {
@@ -428,7 +449,7 @@ export default function HomePage() {
     setAiAnswer("");
     setAiError(null);
     setAiSources([]);
-    if (enabled) void initializeRagSession();
+
   }
 
   async function refreshRagSession(): Promise<void> {
@@ -446,7 +467,7 @@ export default function HomePage() {
       return;
     }
 
-    if (ragSessionStatus !== "ready") {
+    if (!aiSessionReady) {
       await initializeRagSession();
       return;
     }
@@ -509,7 +530,7 @@ export default function HomePage() {
 
   async function handleAskAi(): Promise<void> {
     const question = q.trim();
-    if (!question || aiLoading || isRagAttachmentInFlight(aiDocumentStatus)) return;
+    if (!question || !aiSessionReady || clearingAttachments || aiLoading || isRagAttachmentInFlight(aiDocumentStatus)) return;
 
     setAiLoading(true);
     setAiError(null);
@@ -597,6 +618,9 @@ export default function HomePage() {
         aiEnabled={aiEnabled}
         aiError={aiError}
         aiLoading={aiLoading}
+        aiSessionReady={aiSessionReady}
+        onRetryAiSession={() => void initializeRagSession()}
+        aiSessionError={ragSessionStatus === "error"}
         aiSources={aiSources}
         canSearch={canSearch}
         err={err}
@@ -619,7 +643,7 @@ export default function HomePage() {
         searchInputClass={searchInputClass}
         searchInputRef={searchInputRef}
         uploadDocumentsLoading={authStatus === "loading" || ragSessionStatus === "loading"}
-        uploadDocumentsReady={authStatus === "authenticated" && ragSessionStatus === "ready"}
+        uploadDocumentsReady={authStatus === "authenticated" && aiSessionReady}
         yearRange={yearRange}
       />
 

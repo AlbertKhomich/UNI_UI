@@ -26,6 +26,9 @@ type SearchControlsProps = {
   aiEnabled: boolean;
   aiError: string | null;
   aiLoading: boolean;
+  aiSessionReady: boolean;
+  aiSessionError: boolean;
+  onRetryAiSession: () => void;
   aiSources: RagSource[];
   canSearch: boolean;
   err: string | null;
@@ -60,6 +63,9 @@ export default function SearchControls(props: SearchControlsProps) {
     aiEnabled,
     aiError,
     aiLoading,
+    aiSessionReady,
+    aiSessionError,
+    onRetryAiSession,
     aiSources,
     canSearch,
     err,
@@ -91,7 +97,7 @@ export default function SearchControls(props: SearchControlsProps) {
   const yearInputClass = `${prefixButtonClass} w-24 appearance-none text-center outline-none`;
   const attachmentInFlight = ["uploading", "pending", "parsing", "chunking", "embedding"].includes(aiDocumentStatus);
   const showWorking = aiLoading || attachmentInFlight;
-  const askDisabled = aiLoading || attachmentInFlight || query.trim().length === 0;
+  const askDisabled = !aiSessionReady || clearingAttachments || aiLoading || attachmentInFlight || query.trim().length === 0;
 
   async function handleCopyAnswer(): Promise<void> {
     try {
@@ -180,6 +186,9 @@ export default function SearchControls(props: SearchControlsProps) {
               <FiSend aria-hidden="true" size={15} />
               ask
             </button>
+            {!aiSessionReady && (aiSessionError ? (
+              <button type="button" className={prefixButtonClass} onClick={onRetryAiSession}>Retry AI setup</button>
+            ) : <span role="status" className="text-sm text-gray-500">Preparing AI...</span>)}
             {aiDocumentStatus ? (
               <span className="text-sm text-gray-500">{aiDocumentStatus}</span>
             ) : null}
@@ -244,7 +253,7 @@ export default function SearchControls(props: SearchControlsProps) {
                 <span>Working...</span>
               </div>
             )}
-            {aiError && <span className="text-red-600">{aiError}</span>}
+            {aiError && <span role="alert" className="whitespace-pre-wrap text-red-600">{aiError}</span>}
             {aiAnswer ? (
               <div className="mt-2 whitespace-pre-wrap rounded-xl border border-gray-200 p-3 text-sm leading-6 dark:border-gray-700">
                 <div className="mb-2 flex justify-end">
